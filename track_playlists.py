@@ -1,3 +1,4 @@
+import bootstrap
 import asyncio
 import csv
 import json
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 load_dotenv()
+
 
 # Generate output filename with timestamp
 # Format: scraped-files/SCRAPED MM-dd-yy__h.mm.ss a.csv
@@ -135,7 +137,17 @@ async def main():
     all_tracks = []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        try:
+            browser = await p.chromium.launch(headless=True)
+        except Exception as e:
+            err_str = str(e)
+            if "Executable doesn't exist" in err_str or "playwright install" in err_str:
+                print("Playwright browsers not found. Installing...")
+                import sys
+                subprocess.run([sys.executable, "-m", "playwright", "install"], check=True)
+                browser = await p.chromium.launch(headless=True)
+            else:
+                raise
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
 
