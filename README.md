@@ -26,6 +26,7 @@ That's it. The script handles everything automatically from start to finish.
    ```
    🪁 DX 02-20-26
    ```
+   A **custom 500×500 cover** is generated on the fly and uploaded — a dark, purple, futuristic "pirate radio broadcast" slate with the playlist's creation date stamped vertically (`MAY` / `22` / `26`). The generated JPEG is also saved to `generated-artwork/` as a historical record.
 4. **All found tracks are added** to that playlist automatically using a 3-step search strategy:
    - **Strategy 1**: Title + Artist + Album (most precise)
    - **Strategy 2**: Title + Artist only
@@ -48,6 +49,7 @@ The project organizes its output into two main directories:
 
 - **`scraped-files/`** — Stores timestamped CSVs of every matching track found on Tidal (Today/Yesterday/This Week). These serve as a historical record of what was "scraped" before the Spotify matching process begins.
 - **`missed-tracks/`** — If a track found on Tidal cannot be confidently matched on Spotify (e.g., due to different artist formatting or if the track is not yet on Spotify), it is saved here in a `MISSED` CSV. This makes it easy to manually find and add any tracks the script couldn't automate.
+- **`generated-artwork/`** — Stores the timestamped JPEG cover art generated for each playlist run (e.g. `ARTWORK 02-20-26__10.15.00 PM.jpg`). Each cover is rendered fresh via `generate_artwork.py` (HTML/CSS → Playwright → JPEG) and stamped with that day's date. To preview a cover without creating a playlist, run `python3 generate_artwork.py 2026-05-22`.
 
 ---
 

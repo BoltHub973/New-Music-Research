@@ -215,14 +215,33 @@ def main():
         playlist = spotify_call(sp.user_playlist_create, user_id, playlist_name, public=False)
         playlist_id = playlist['id']
 
-        # Upload custom artwork
-        if os.path.exists(ARTWORK_PATH):
-            with open(ARTWORK_PATH, 'rb') as img_file:
+        # Generate dynamic artwork stamped with the playlist's creation date.
+        # Falls back to the static Playlist-Artwork.jpg if generation ever fails,
+        # so we never publish a playlist without cover art.
+        artwork_to_upload = None
+        try:
+            from generate_artwork import generate_artwork
+            os.makedirs("generated-artwork", exist_ok=True)
+            dynamic_path = os.path.join(
+                "generated-artwork",
+                f"ARTWORK {current_timestamp}.jpg",
+            )
+            generate_artwork(now, dynamic_path)
+            artwork_to_upload = dynamic_path
+            print(f"  🎨 Generated artwork: {dynamic_path}")
+        except Exception as e:
+            print(f"  ⚠️  Dynamic artwork generation failed: {e}")
+            if os.path.exists(ARTWORK_PATH):
+                artwork_to_upload = ARTWORK_PATH
+                print(f"  ↩️  Falling back to static artwork: {ARTWORK_PATH}")
+
+        if artwork_to_upload and os.path.exists(artwork_to_upload):
+            with open(artwork_to_upload, 'rb') as img_file:
                 image_b64 = base64.b64encode(img_file.read()).decode('utf-8')
             spotify_call(sp.playlist_upload_cover_image, playlist_id, image_b64)
-            print("  🎨 Artwork uploaded.")
+            print("  ⬆️  Artwork uploaded to Spotify.")
         else:
-            print(f"  ⚠️  Artwork not found at {ARTWORK_PATH} — skipping.")
+            print("  ⚠️  No artwork available — skipping cover upload.")
         
         # 6. Add Tracks
         if track_uris:
