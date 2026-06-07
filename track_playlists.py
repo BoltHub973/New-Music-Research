@@ -31,7 +31,9 @@ def trigger_km_macro(uuid):
     """Triggers a Keyboard Maestro macro by its UUID using osascript."""
     script = f'tell application "Keyboard Maestro Engine" to do script "{uuid}"'
     try:
-        subprocess.run(["osascript", "-e", script], check=True)
+        # Silence osascript's stdout — `do script` echoes "missing value", which
+        # would otherwise leak into our redirected stdout (the SPOTIFY_URI file).
+        subprocess.run(["osascript", "-e", script], check=True, stdout=subprocess.DEVNULL)
         ui.ok(f"Triggered Keyboard Maestro macro {uuid}")
     except subprocess.CalledProcessError as e:
         ui.err(f"Failed to trigger KM macro: {e}")
@@ -44,7 +46,10 @@ def open_spotify_playlist(uri):
     stdout, so the SPOTIFY_URI line alone would never cause the playlist to open.
     """
     try:
-        subprocess.run(["open", uri], check=False)
+        # `-a Spotify` forces the desktop app to handle the spotify: URI. Plain
+        # `open <uri>` lets LaunchServices pick a handler and can silently route
+        # to the web player (or nowhere) — that's why the playlist wasn't opening.
+        subprocess.run(["open", "-a", "Spotify", uri], check=False)
         ui.ok(f"Opening playlist in Spotify → [{ui.PRIMARY}]{uri}[/]")
     except Exception as e:
         ui.warn(f"Could not open Spotify automatically: {e}")
@@ -288,6 +293,11 @@ async def main():
         km.phase(3, 3, "EXPORT TO SPOTIFY")
         km.current("Spotify", "matching & adding tracks…", "exporting")
         ui.info("Handing off to export_to_spotify.py")
+        # The exporter is a blocking subprocess that doesn't stream progress back
+        # to KM, so the HUD would otherwise sit frozen for ~10-15s. Switch the
+        # window to a clean "working" message for the duration of the export.
+        km.busy("EXPORTING TO SPOTIFY",
+                "Matching tracks on Spotify and building your playlist — this can take a moment…")
         try:
             # The exporter renders its progress to stderr (streamed live); its
             # stdout carries only machine-readable data lines — SPOTIFY_URI: and
@@ -312,6 +322,7 @@ async def main():
             # *our* stdout (e.g. the `do shell script` recipe in the README).
             if spotify_uri:
                 print(f"SPOTIFY_URI:{spotify_uri}")
+                sys.stdout.flush()  # keep the stdout data contract intact for any launcher watching it
 
             # Hand the scraped + missed track lists to the progress window so it
             # can render a results page once the run completes.

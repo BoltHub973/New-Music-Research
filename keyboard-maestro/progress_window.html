@@ -143,6 +143,24 @@
   button:hover{background:var(--cyan-glow); box-shadow:0 0 24px var(--cyan-glow);}
   button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
 
+  /* busy overlay — a long blocking step that can't report incremental progress.
+     When active, the progress widgets hide and a centered working message shows. */
+  .busy-card{display:none; flex:1 1 auto; min-height:0;
+    flex-direction:column; align-items:center; justify-content:center; gap:28px; text-align:center;}
+  .panel.busy-mode .busy-card{display:flex; animation:rise .4s ease-out both;}
+  .panel.busy-mode > .row,
+  .panel.busy-mode > .bar,
+  .panel.busy-mode > .current,
+  .panel.busy-mode > .stats,
+  .panel.busy-mode > .log{display:none !important;}
+  .busy-ring{width:86px; height:86px; border-radius:50%;
+    border:3px solid rgba(0,240,255,.14); border-top-color:var(--cyan);
+    box-shadow:0 0 30px var(--cyan-glow); animation:rotate 1s linear infinite;}
+  .busy-title{font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.7rem;
+    letter-spacing:.12em; color:var(--cyan); text-transform:uppercase; text-shadow:0 0 18px var(--cyan-glow);}
+  .busy-detail{font-family:'JetBrains Mono',monospace; font-size:1.02rem; color:var(--muted);
+    max-width:660px; line-height:1.6;}
+
   /* results page (shown when the run completes) */
   .results{display:none; flex:1 1 auto; min-height:0; margin-top:24px;
     grid-template-columns:1fr 1fr; gap:24px;}
@@ -178,6 +196,7 @@
   @keyframes sheen{from{transform:translateX(-100%);}to{transform:translateX(100%);}}
   @keyframes slide{0%{left:-40%;}100%{left:100%;}}
   @keyframes rise{from{opacity:0; transform:translateY(14px);}to{opacity:1; transform:translateY(0);}}
+  @keyframes rotate{to{transform:rotate(360deg);}}
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important; transition:none !important;}
   }
@@ -225,6 +244,12 @@
         <ul id="log"></ul>
       </div>
 
+      <div class="busy-card" id="busyCard">
+        <div class="busy-ring"></div>
+        <div class="busy-title" id="busyTitle">Working…</div>
+        <div class="busy-detail" id="busyDetail"></div>
+      </div>
+
       <div class="results" id="results">
         <div class="result-col scraped">
           <h3>Scraped <span class="sub">· found on Tidal</span></h3>
@@ -270,7 +295,9 @@
       missedCount: document.getElementById('missedCount'), missedList: document.getElementById('missedList'),
       doneCard: document.getElementById('doneCard'), doneMark: document.getElementById('doneMark'),
       doneMsg: document.getElementById('doneMsg'), liveLabel: document.getElementById('liveLabel'),
-      openBtn: document.getElementById('openBtn')
+      openBtn: document.getElementById('openBtn'),
+      panel: document.querySelector('.panel'),
+      busyTitle: document.getElementById('busyTitle'), busyDetail: document.getElementById('busyDetail')
     };
     var STATUS_COLOR = {opening:'var(--violet)', scanning:'var(--cyan)', working:'var(--cyan)',
                         exporting:'var(--magenta)', done:'var(--ok)', idle:'var(--ghost)'};
@@ -346,6 +373,15 @@
 
     var finished = false;
     function render(s){
+      // busy overlay — a long blocking step (e.g. the Spotify export) hides the
+      // progress widgets and shows a centered working message so the window
+      // doesn't look frozen during the gap before the results page.
+      var isBusy = !!s.busy && !s.done;
+      els.panel.classList.toggle('busy-mode', isBusy);
+      if(isBusy){
+        els.busyTitle.textContent = s.busyLabel || 'Working…';
+        els.busyDetail.textContent = s.busyDetail || '';
+      }
       // phases
       els.phases.forEach(function(el){
         var p = parseInt(el.getAttribute('data-p'),10);

@@ -39,6 +39,9 @@ _state = {
     "ok": True,
     "message": "",
     "spotifyUri": "",
+    "busy": False,
+    "busyLabel": "",
+    "busyDetail": "",
     "ts": 0.0,
 }
 _last_push = 0.0
@@ -125,6 +128,16 @@ def _slim(tracks) -> list:
     return out
 
 
+def busy(label: str, detail: str = "") -> None:
+    """Switch the window to a full-panel 'working' message (no progress bar) for a
+    long blocking step that can't report incremental progress (e.g. the Spotify
+    export). Cleared automatically by ``finish``."""
+    _state["busy"] = True
+    _state["busyLabel"] = label
+    _state["busyDetail"] = detail
+    _push(force=True)
+
+
 def results(scraped=None, missed=None) -> None:
     """Stash the scraped + missed track lists for the completion results page."""
     _state["tracks"] = {"scraped": _slim(scraped), "missed": _slim(missed)}
@@ -136,5 +149,6 @@ def finish(ok: bool = True, message: str = "", spotify_uri: str = "") -> None:
     _state["ok"] = ok
     _state["message"] = message
     _state["spotifyUri"] = spotify_uri
+    _state["busy"] = False  # the results page replaces the working message
     _state["current"] = {"name": "", "detail": "", "status": "done"}
     _push(force=True)
