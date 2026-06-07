@@ -143,6 +143,32 @@
   button:hover{background:var(--cyan-glow); box-shadow:0 0 24px var(--cyan-glow);}
   button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
 
+  /* results page (shown when the run completes) */
+  .results{display:none; flex:1 1 auto; min-height:0; margin-top:24px;
+    grid-template-columns:1fr 1fr; gap:24px;}
+  .results.show{display:grid;}
+  .result-col{display:flex; flex-direction:column; min-height:0;
+    border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:22px 26px;
+    background:rgba(255,255,255,.025);}
+  .result-col.scraped{border-color:rgba(0,255,136,.28); box-shadow:inset 0 0 28px rgba(0,255,136,.045);}
+  .result-col.missed{border-color:rgba(255,51,102,.28); box-shadow:inset 0 0 28px rgba(255,51,102,.045);}
+  .result-col h3{margin:0; font-family:'JetBrains Mono',monospace; font-size:.8rem;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--muted);}
+  .result-col h3 .sub{color:var(--ghost); letter-spacing:.12em;}
+  .result-col .count{font-family:'Orbitron',sans-serif; font-weight:900; font-size:2.4rem;
+    font-variant-numeric:tabular-nums; line-height:1; margin:8px 0 16px;}
+  .result-col.scraped .count{color:var(--ok); text-shadow:0 0 18px rgba(0,255,136,.2);}
+  .result-col.missed .count{color:var(--err); text-shadow:0 0 18px rgba(255,51,102,.2);}
+  .tracklist{list-style:none; margin:0; padding:0; overflow-y:auto; flex:1 1 auto; min-height:0;}
+  .tracklist li{padding:9px 2px; border-bottom:1px solid rgba(255,255,255,.05);
+    display:flex; flex-direction:column; gap:2px;}
+  .tracklist li .t{color:var(--text); font-weight:600; font-size:1.04rem;}
+  .tracklist li .a{font-family:'JetBrains Mono',monospace; font-size:.84rem; color:var(--muted);}
+  .tracklist li .a .src{color:var(--violet);}
+  .tracklist .empty{color:var(--ghost); padding:16px 2px; font-style:italic;}
+  button.primary{background:var(--cyan); color:#001016; border-color:var(--cyan); box-shadow:0 0 18px var(--cyan-glow);}
+  button.primary:hover{background:#5cf6ff; box-shadow:0 0 30px var(--cyan-glow);}
+
   ::-webkit-scrollbar{width:7px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1); border-radius:4px;}
@@ -199,9 +225,25 @@
         <ul id="log"></ul>
       </div>
 
+      <div class="results" id="results">
+        <div class="result-col scraped">
+          <h3>Scraped <span class="sub">· found on Tidal</span></h3>
+          <div class="count" id="scrapedCount">0</div>
+          <ul class="tracklist" id="scrapedList"></ul>
+        </div>
+        <div class="result-col missed">
+          <h3>Missed <span class="sub">· no Spotify match</span></h3>
+          <div class="count" id="missedCount">0</div>
+          <ul class="tracklist" id="missedList"></ul>
+        </div>
+      </div>
+
       <div class="done-card" id="doneCard">
         <div class="done-head"><span class="mark" id="doneMark">&check;</span><span class="msg" id="doneMsg"></span></div>
-        <div class="actions"><button id="closeBtn" type="button">Close</button></div>
+        <div class="actions">
+          <button id="openBtn" class="primary" type="button" style="display:none;">Open in Spotify</button>
+          <button id="closeBtn" type="button">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -222,14 +264,61 @@
       fill: document.getElementById('fill'), spin: document.getElementById('spin'),
       curName: document.getElementById('curName'), curDetail: document.getElementById('curDetail'),
       stats: document.getElementById('stats'), log: document.getElementById('log'),
+      logBox: document.querySelector('.log'), current: document.querySelector('.current'),
+      results: document.getElementById('results'),
+      scrapedCount: document.getElementById('scrapedCount'), scrapedList: document.getElementById('scrapedList'),
+      missedCount: document.getElementById('missedCount'), missedList: document.getElementById('missedList'),
       doneCard: document.getElementById('doneCard'), doneMark: document.getElementById('doneMark'),
-      doneMsg: document.getElementById('doneMsg'), liveLabel: document.getElementById('liveLabel')
+      doneMsg: document.getElementById('doneMsg'), liveLabel: document.getElementById('liveLabel'),
+      openBtn: document.getElementById('openBtn')
     };
     var STATUS_COLOR = {opening:'var(--violet)', scanning:'var(--cyan)', working:'var(--cyan)',
                         exporting:'var(--magenta)', done:'var(--ok)', idle:'var(--ghost)'};
 
     function close(){ try{ KM.Cancel(); }catch(e){ try{ window.close(); }catch(e2){} } }
     document.getElementById('closeBtn').addEventListener('click', close);
+
+    function renderTracks(ul, tracks){
+      ul.innerHTML = '';
+      if(!tracks || !tracks.length){
+        var empty = document.createElement('li');
+        empty.className = 'empty';
+        empty.textContent = '— none —';
+        ul.appendChild(empty);
+        return;
+      }
+      tracks.forEach(function(t){
+        var li = document.createElement('li');
+        var title = document.createElement('span'); title.className = 't';
+        title.textContent = t.title || 'Unknown title';
+        var meta = document.createElement('span'); meta.className = 'a';
+        meta.textContent = t.artist || 'Unknown artist';
+        if(t.source){
+          var src = document.createElement('span'); src.className = 'src';
+          src.textContent = '  ·  ' + t.source;
+          meta.appendChild(src);
+        }
+        li.appendChild(title); li.appendChild(meta);
+        ul.appendChild(li);
+      });
+    }
+
+    function showResults(s){
+      var t = s.tracks || {scraped:[], missed:[]};
+      var scraped = t.scraped || [], missed = t.missed || [];
+      els.scrapedCount.textContent = scraped.length;
+      els.missedCount.textContent = missed.length;
+      renderTracks(els.scrapedList, scraped);
+      renderTracks(els.missedList, missed);
+      // Swap the live activity feed out for the results page.
+      if(els.current) els.current.style.display = 'none';
+      if(els.logBox) els.logBox.style.display = 'none';
+      els.results.classList.add('show');
+      if(s.spotifyUri){
+        els.openBtn.style.display = '';
+        els.openBtn.onclick = function(){ try{ window.location.href = s.spotifyUri; }catch(e){} };
+      }
+    }
 
     function renderLog(lines){
       if(!lines) return;
@@ -296,7 +385,9 @@
         els.doneMsg.textContent = s.message || (s.ok ? 'Complete' : 'Finished with errors');
         els.liveLabel.textContent = 'Complete';
         els.spin.style.animation = 'none';
-        setTimeout(close, 8000);
+        // Swap in the scraped-vs-missed results page and leave it up — the user
+        // closes it manually (no auto-dismiss) so there's time to read it.
+        showResults(s);
       }
     }
 

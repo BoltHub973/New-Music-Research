@@ -302,6 +302,8 @@ def main():
         ui.warn(f"{len(omitted)} track(s) omitted (no confident Spotify match) → {missed_file}")
         for t in omitted:
             ui.info(f"{t['Title']} - {t['Artist']}")
+        # Machine-readable handle for the orchestrator's results page — stdout ONLY.
+        print(f"MISSED_FILE:{missed_file}")
     else:
         ui.ok("All tracks matched successfully — nothing omitted.")
 

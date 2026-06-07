@@ -7,6 +7,10 @@ import sys
 import datetime
 import subprocess
 import ui
+
+# Keyboard Maestro integration lives in keyboard-maestro/ (a hyphenated, non-importable
+# folder name), so make it importable before pulling in the progress bridge.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "keyboard-maestro"))
 import km_progress as km
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
@@ -31,6 +35,31 @@ def trigger_km_macro(uuid):
         ui.ok(f"Triggered Keyboard Maestro macro {uuid}")
     except subprocess.CalledProcessError as e:
         ui.err(f"Failed to trigger KM macro: {e}")
+
+def open_spotify_playlist(uri):
+    """Open a spotify: URI in the Spotify desktop app. Best-effort, never fatal.
+
+    This is the reliable way the playlist opens: when the pipeline is launched in
+    its own iTerm window (e.g. by the Keyboard Maestro macro) nothing is capturing
+    stdout, so the SPOTIFY_URI line alone would never cause the playlist to open.
+    """
+    try:
+        subprocess.run(["open", uri], check=False)
+        ui.ok(f"Opening playlist in Spotify → [{ui.PRIMARY}]{uri}[/]")
+    except Exception as e:
+        ui.warn(f"Could not open Spotify automatically: {e}")
+
+
+def read_tracks_csv(path):
+    """Read a scraped/missed CSV into a list of row dicts (empty list on any error)."""
+    rows = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        pass
+    return rows
+
 
 def load_playlists(filename="playlists.json"):
     if not os.path.exists(filename):
@@ -260,11 +289,41 @@ async def main():
         km.current("Spotify", "matching & adding tracks…", "exporting")
         ui.info("Handing off to export_to_spotify.py")
         try:
-            # Stream live (no capture): the exporter renders its own progress to
-            # stderr while its single SPOTIFY_URI line flows through stdout to
-            # any AppleScript launcher watching this process.
-            subprocess.run([sys.executable, "export_to_spotify.py", output_file], check=True)
-            km.finish(ok=True, message="Playlist created — opening in Spotify")
+            # The exporter renders its progress to stderr (streamed live); its
+            # stdout carries only machine-readable data lines — SPOTIFY_URI: and
+            # MISSED_FILE: — which we capture so we can open the playlist and
+            # build the results page.
+            result = subprocess.run(
+                [sys.executable, "export_to_spotify.py", output_file],
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+
+            spotify_uri = ""
+            missed_file = ""
+            for line in result.stdout.splitlines():
+                if line.startswith("SPOTIFY_URI:"):
+                    spotify_uri = line[len("SPOTIFY_URI:"):].strip()
+                elif line.startswith("MISSED_FILE:"):
+                    missed_file = line[len("MISSED_FILE:"):].strip()
+
+            # Preserve the data contract for any AppleScript launcher watching
+            # *our* stdout (e.g. the `do shell script` recipe in the README).
+            if spotify_uri:
+                print(f"SPOTIFY_URI:{spotify_uri}")
+
+            # Hand the scraped + missed track lists to the progress window so it
+            # can render a results page once the run completes.
+            missed = read_tracks_csv(missed_file) if missed_file else []
+            km.results(scraped=unique_tracks, missed=missed)
+
+            # Actually open the freshly created playlist (see open_spotify_playlist).
+            if spotify_uri:
+                open_spotify_playlist(spotify_uri)
+
+            km.finish(ok=True, message="Playlist created — opening in Spotify",
+                      spotify_uri=spotify_uri)
         except subprocess.CalledProcessError as e:
             ui.err(f"Spotify export failed: {e}")
             km.finish(ok=False, message="Spotify export failed")

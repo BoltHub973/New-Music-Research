@@ -139,3 +139,5 @@ end if
 1. Runs `track_playlists.py`, which scrapes Tidal and calls `export_to_spotify.py`
 2. `export_to_spotify.py` prints a `SPOTIFY_URI:` tag after the playlist is created
 3. AppleScript captures that URI and opens the playlist directly in the **Spotify desktop app**
+
+> **Note:** `track_playlists.py` now opens the playlist itself (via `open spotify:playlist:…`) as soon as the run completes, so the playlist opens even from a fire-and-forget launcher that doesn't capture stdout (e.g. a Keyboard Maestro macro that runs the pipeline in its own iTerm window). The `SPOTIFY_URI:` line is still printed for the AppleScript recipe above, so both paths keep working.

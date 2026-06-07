@@ -34,6 +34,7 @@ _state = {
     "current": {"name": "", "detail": "", "status": "idle"},
     "log": [],
     "stats": {},
+    "tracks": {"scraped": [], "missed": []},
     "done": False,
     "ok": True,
     "message": "",
@@ -109,6 +110,24 @@ def log(line: str) -> None:
 
 def stats(**kw) -> None:
     _state["stats"].update(kw)
+    _push(force=True)
+
+
+def _slim(tracks) -> list:
+    """Reduce a track list to the small shape the results page renders."""
+    out = []
+    for t in tracks or []:
+        out.append({
+            "title": (t.get("Title") or "").strip(),
+            "artist": (t.get("Artist") or "").strip(),
+            "source": (t.get("Source Playlist") or "").strip(),
+        })
+    return out
+
+
+def results(scraped=None, missed=None) -> None:
+    """Stash the scraped + missed track lists for the completion results page."""
+    _state["tracks"] = {"scraped": _slim(scraped), "missed": _slim(missed)}
     _push(force=True)
 
 
