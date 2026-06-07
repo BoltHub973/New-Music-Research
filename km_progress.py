@@ -51,7 +51,12 @@ def _push(force: bool = False) -> None:
     _last_push = now
     _state["ts"] = time.time()
     env = dict(os.environ)
-    env["NMR_PAYLOAD"] = json.dumps(_state, ensure_ascii=False)
+    # ensure_ascii=True escapes every non-ASCII char as \uXXXX. The payload then
+    # travels through the NMR_PAYLOAD env var as pure ASCII, so AppleScript's
+    # `system attribute` (which decodes the bytes as Mac Roman) can't mangle it.
+    # The browser's JSON.parse restores the real glyphs — em dashes, middle dots,
+    # accented playlist names — exactly.
+    env["NMR_PAYLOAD"] = json.dumps(_state)
     try:
         subprocess.run(
             [
