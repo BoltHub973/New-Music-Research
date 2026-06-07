@@ -7,6 +7,7 @@ import sys
 import datetime
 import subprocess
 import ui
+import km_progress as km
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
@@ -89,15 +90,18 @@ async def scrape_playlist(page, playlist, progress, overall):
     sub = progress.add_task(
         f"[{ui.VIOLET}]  └─ {playlist['name']}", total=None, detail="opening…"
     )
+    km.current(playlist['name'], "opening…", "opening")
     try:
         await page.goto(playlist['url'])
         progress.update(sub, detail="waiting for tracklist…")
+        km.current(playlist['name'], "waiting for tracklist…", "opening")
         # Wait for the tracklist to load
         try:
             await page.wait_for_selector('[data-test="tracklist-row"]', timeout=10000)
         except:
             progress.remove_task(sub)
             ui.warn(f"{playlist['name']} — timed out waiting for tracklist")
+            km.log(f"{playlist['name']} — timed out waiting for tracklist")
             progress.advance(overall)
             return []
 
@@ -126,6 +130,11 @@ async def scrape_playlist(page, playlist, progress, overall):
             progress.update(
                 sub,
                 detail=f"scanned {len(all_tracks)} · {_count_recent(all_tracks)} recent",
+            )
+            km.current(
+                playlist['name'],
+                f"scanned {len(all_tracks)} · {_count_recent(all_tracks)} recent",
+                "scanning",
             )
 
             if new_this_round == 0:
@@ -156,28 +165,35 @@ async def scrape_playlist(page, playlist, progress, overall):
                 f"[bold {ui.PRIMARY}]{len(tracks_data)}[/] recent "
                 f"[{ui.MUTED}]of {len(all_tracks)} scanned[/]"
             )
+            km.log(f"{playlist['name']} — {len(tracks_data)} recent of {len(all_tracks)} scanned")
         else:
             ui.info(f"{playlist['name']} — 0 recent of {len(all_tracks)} scanned")
+            km.log(f"{playlist['name']} — 0 recent of {len(all_tracks)} scanned")
         progress.advance(overall)
         return tracks_data
 
     except Exception as e:
         progress.remove_task(sub)
         ui.err(f"Error scraping {playlist['name']}: {e}")
+        km.log(f"Error scraping {playlist['name']}: {e}")
         progress.advance(overall)
         return []
 
 async def main():
     ui.banner()
+    km.reset()
 
     playlists = load_playlists()
     if not playlists:
+        km.finish(ok=False, message="playlists.json not found or empty")
         return
 
     all_tracks = []
 
     # ── PHASE 1 — Scrape Tidal ───────────────────────────────────────────────
     ui.phase(1, 3, "SCRAPE TIDAL")
+    km.phase(1, 3, "SCRAPE TIDAL")
+    km.overall(0, len(playlists), "Scanning playlists")
     ui.step(f"Launching headless browser for {len(playlists)} playlists")
 
     async with async_playwright() as p:
@@ -200,18 +216,21 @@ async def main():
                 total=len(playlists),
                 detail="",
             )
-            for playlist in playlists:
+            for idx, playlist in enumerate(playlists):
                 tracks = await scrape_playlist(page, playlist, progress, overall)
                 all_tracks.extend(tracks)
+                km.overall(idx + 1, len(playlists))
 
         await browser.close()
 
     # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
     ui.phase(2, 3, "DEDUPE & SNAPSHOT")
+    km.phase(2, 3, "DEDUPE & SNAPSHOT")
     keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
 
     if all_tracks:
         ui.step(f"{len(all_tracks)} recent matches found across all playlists")
+        km.current("Dedupe", f"{len(all_tracks)} recent matches found", "working")
 
         # Remove duplicates based on Artist, Album, Title
         unique_tracks = []
@@ -225,6 +244,8 @@ async def main():
         dupes = len(all_tracks) - len(unique_tracks)
         ui.ok(f"{len(unique_tracks)} unique tracks "
               f"[{ui.MUTED}]({dupes} duplicate{'s' if dupes != 1 else ''} removed)[/]")
+        km.stats(recent=len(all_tracks), unique=len(unique_tracks), duplicates=dupes)
+        km.log(f"{len(unique_tracks)} unique tracks ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
 
         # Write to CSV
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
@@ -235,19 +256,25 @@ async def main():
 
         # ── PHASE 3 — Hand off to the Spotify exporter ───────────────────────
         ui.phase(3, 3, "EXPORT TO SPOTIFY")
+        km.phase(3, 3, "EXPORT TO SPOTIFY")
+        km.current("Spotify", "matching & adding tracks…", "exporting")
         ui.info("Handing off to export_to_spotify.py")
         try:
             # Stream live (no capture): the exporter renders its own progress to
             # stderr while its single SPOTIFY_URI line flows through stdout to
             # any AppleScript launcher watching this process.
             subprocess.run([sys.executable, "export_to_spotify.py", output_file], check=True)
+            km.finish(ok=True, message="Playlist created — opening in Spotify")
         except subprocess.CalledProcessError as e:
             ui.err(f"Spotify export failed: {e}")
+            km.finish(ok=False, message="Spotify export failed")
         except Exception as e:
             ui.err(f"An error occurred during export: {e}")
+            km.finish(ok=False, message="An error occurred during export")
 
     else:
         ui.warn("No matching tracks found (Today / Yesterday / This Week).")
+        km.finish(ok=True, message="No new tracks found (Today / Yesterday / This Week)")
         # Create empty CSV with headers just in case
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)
