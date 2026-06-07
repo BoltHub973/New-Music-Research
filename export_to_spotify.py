@@ -3,10 +3,12 @@ import base64
 import csv
 import glob
 import os
+import sys
 import datetime
 import time
 import subprocess
 import spotipy
+import ui
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
@@ -33,19 +35,18 @@ def get_latest_csv():
 def get_credentials():
     """Prompts user for credentials if not found in env."""
     global CLIENT_ID, CLIENT_SECRET
-    
+
     if not CLIENT_ID:
-        print("\n--- Spotify Credentials Required ---")
-        print("You can find these in your Spotify Developer Dashboard.")
+        ui.warn("Spotify credentials required — find these in your Developer Dashboard.")
         CLIENT_ID = input("Enter your Spotify Client ID: ").strip()
-        
+
     if not CLIENT_SECRET:
         if not CLIENT_ID: # If user just hit enter above, maybe they set them now?
              CLIENT_ID = input("Enter your Spotify Client ID: ").strip()
         CLIENT_SECRET = input("Enter your Spotify Client Secret: ").strip()
-        
+
     if not CLIENT_ID or not CLIENT_SECRET:
-        print("Error: Client ID and Client Secret are required so we can talk to Spotify.")
+        ui.err("Client ID and Client Secret are required so we can talk to Spotify.")
         return False
     return True
 
@@ -65,30 +66,29 @@ def spotify_call(fn, *args, **kwargs):
         except spotipy.exceptions.SpotifyException as e:
             if e.http_status == 429:
                 retry_after = int(e.headers.get("Retry-After", 30)) + 1
-                msg = f"Waiting {retry_after}s for rate limit to reset..."
-                print(f"\n  ⚠️  Rate limited — {msg}")
+                msg = f"Waiting {retry_after}s for rate limit to reset…"
+                ui.warn(f"Rate limited — {msg}")
                 mac_notify("🪁 DX — Spotify Rate Limit", msg)
                 time.sleep(retry_after)
-                print("  ↩️  Retrying...")
+                ui.info("Retrying…")
             else:
                 raise
 
 def main():
     # 1. basic setup
-    import sys
     if len(sys.argv) > 1:
         csv_file = sys.argv[1]
     else:
-        print("Looking for latest scraped CSV...")
+        ui.info("Looking for latest scraped CSV…")
         csv_file = get_latest_csv()
-        
+
     if not csv_file:
-        print("Error: No CSV file provided or found.")
+        ui.err("No CSV file provided or found.")
         return
 
-    print(f"Processing: {csv_file}")
-    
     # 2. Authenticate
+    ui.section("AUTHENTICATE SPOTIFY")
+    ui.step(f"Source snapshot: [{ui.PRIMARY}]{csv_file}[/]")
     if not get_credentials():
         return
 
@@ -101,10 +101,11 @@ def main():
             open_browser=True
         ))
         user_id = spotify_call(sp.me)['id']
-        print(f"Authenticated as: {user_id}")
+        ui.ok(f"Authenticated as [{ui.PRIMARY}]{user_id}[/]")
     except Exception as e:
-        print(f"Authentication failed: {e}")
-        print("Please check your Client ID and Secret and `http://127.0.0.1:8888/callback` is in your App settings.")
+        ui.err(f"Authentication failed: {e}")
+        ui.info("Check your Client ID/Secret and that "
+                "http://127.0.0.1:8888/callback is a Redirect URI in your app settings.")
         return
 
     # 3. Read Tracks
@@ -115,14 +116,14 @@ def main():
             for row in reader:
                 tracks_to_search.append(row)
     except Exception as e:
-        print(f"Error reading CSV {csv_file}: {e}")
+        ui.err(f"Error reading CSV {csv_file}: {e}")
         return
-            
+
     if not tracks_to_search:
-        print("No tracks found in CSV.")
+        ui.warn("No tracks found in CSV.")
         return
-        
-    print(f"Loaded {len(tracks_to_search)} tracks from CSV.")
+
+    ui.ok(f"Loaded [bold {ui.PRIMARY}]{len(tracks_to_search)}[/] tracks from snapshot")
 
     # 4. Search and Collect URIs
     track_uris = []
@@ -168,50 +169,67 @@ def main():
     def filter_by_artist(items, expected_artist):
         return [t for t in items if artist_matches(t, expected_artist)]
 
-    print("\nSearching Spotify for tracks...")
-    for track in tracks_to_search:
-        title = track.get('Title', '').strip()
-        artist = track.get('Artist', '').strip()
-        album = track.get('Album', '').strip()
+    ui.section("MATCH TRACKS ON SPOTIFY")
+    with ui.progress() as progress:
+        match_task = progress.add_task(
+            f"[bold {ui.PRIMARY}]Searching Spotify",
+            total=len(tracks_to_search),
+            detail="",
+        )
+        for track in tracks_to_search:
+            title = track.get('Title', '').strip()
+            artist = track.get('Artist', '').strip()
+            album = track.get('Album', '').strip()
 
-        if not title or not artist:
-            continue
+            if not title or not artist:
+                progress.advance(match_task)
+                continue
 
-        # Strategy 1: Title + Artist + Album
-        res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)} album:{clean_query(album)}", limit=5, type='track')
-        items = filter_by_artist(res['tracks']['items'], artist)
-
-        # Strategy 2: Title + Artist only
-        if not items:
-            res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)}", limit=5, type='track')
+            # Strategy 1: Title + Artist + Album
+            res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)} album:{clean_query(album)}", limit=5, type='track')
             items = filter_by_artist(res['tracks']['items'], artist)
 
-        # Strategy 3: Title only (broadest — catches cases where Tidal/Spotify artist names differ)
-        if not items:
-            res = spotify_call(sp.search, q=f"track:{clean_query(title)}", limit=10, type='track')
-            items = filter_by_artist(res['tracks']['items'], artist)
+            # Strategy 2: Title + Artist only
+            if not items:
+                res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)}", limit=5, type='track')
+                items = filter_by_artist(res['tracks']['items'], artist)
 
-        # No confident match — omit rather than risk a false track
-        if items:
-            best = pick_best_track(items)
-            track_uris.append(best['uri'])
-            explicit_tag = "EXPLICIT" if best.get('explicit', False) else "CLEAN"
-            spotify_artists = ', '.join(a['name'] for a in best['artists'])
-            print(f"  [FOUND/{explicit_tag}] {title} - {artist}  →  {best['name']} - {spotify_artists}")
-        else:
-            omitted.append({"Title": title, "Artist": artist, "Album": album,
-                            "Source Playlist": track.get('Source Playlist', ''),
-                            "Date Added": track.get('Date Added', '')})
-            print(f"  [OMITTED] {title} - {artist}")
+            # Strategy 3: Title only (broadest — catches cases where Tidal/Spotify artist names differ)
+            if not items:
+                res = spotify_call(sp.search, q=f"track:{clean_query(title)}", limit=10, type='track')
+                items = filter_by_artist(res['tracks']['items'], artist)
+
+            # No confident match — omit rather than risk a false track
+            if items:
+                best = pick_best_track(items)
+                track_uris.append(best['uri'])
+                spotify_artists = ', '.join(a['name'] for a in best['artists'])
+                ui.found(f"{title} - {artist}",
+                         f"{best['name']} - {spotify_artists}",
+                         best.get('explicit', False))
+            else:
+                omitted.append({"Title": title, "Artist": artist, "Album": album,
+                                "Source Playlist": track.get('Source Playlist', ''),
+                                "Date Added": track.get('Date Added', '')})
+                ui.omitted(f"{title} - {artist}")
+
+            progress.update(
+                match_task,
+                advance=1,
+                detail=f"[{ui.OK}]{len(track_uris)} matched[/] · [{ui.ERR}]{len(omitted)} missed[/]",
+            )
 
     # 5. Create Playlist
+    ui.section("PUBLISH PLAYLIST")
     now = datetime.datetime.now()
     current_date = now.strftime("%m-%d-%y")
     current_timestamp = now.strftime("%m-%d-%y__%I.%M.%S %p")
     playlist_name = f"🪁 DX {current_date}"
-    
-    print(f"\nCreating playlist: {playlist_name}")
+    playlist_id = None
+    missed_file = None
+
     try:
+        ui.step(f"Creating playlist [{ui.VIOLET}]{playlist_name}[/]")
         playlist = spotify_call(sp.user_playlist_create, user_id, playlist_name, public=False)
         playlist_id = playlist['id']
 
@@ -226,37 +244,51 @@ def main():
                 "generated-artwork",
                 f"ARTWORK {current_timestamp}.jpg",
             )
-            generate_artwork(now, dynamic_path)
+            with ui.progress() as progress:
+                art_task = progress.add_task(
+                    f"[bold {ui.PRIMARY}]Rendering cover artwork",
+                    total=None, detail="HTML/CSS → Playwright → JPEG",
+                )
+                generate_artwork(now, dynamic_path)
+                progress.update(art_task, total=1, completed=1, detail="done")
             artwork_to_upload = dynamic_path
-            print(f"  🎨 Generated artwork: {dynamic_path}")
+            ui.ok(f"Generated artwork → [{ui.PRIMARY}]{dynamic_path}[/]")
         except Exception as e:
-            print(f"  ⚠️  Dynamic artwork generation failed: {e}")
+            ui.warn(f"Dynamic artwork generation failed: {e}")
             if os.path.exists(ARTWORK_PATH):
                 artwork_to_upload = ARTWORK_PATH
-                print(f"  ↩️  Falling back to static artwork: {ARTWORK_PATH}")
+                ui.info(f"Falling back to static artwork: {ARTWORK_PATH}")
 
         if artwork_to_upload and os.path.exists(artwork_to_upload):
             with open(artwork_to_upload, 'rb') as img_file:
                 image_b64 = base64.b64encode(img_file.read()).decode('utf-8')
             spotify_call(sp.playlist_upload_cover_image, playlist_id, image_b64)
-            print("  ⬆️  Artwork uploaded to Spotify.")
+            ui.ok("Cover art uploaded to Spotify")
         else:
-            print("  ⚠️  No artwork available — skipping cover upload.")
-        
+            ui.warn("No artwork available — skipping cover upload.")
+
         # 6. Add Tracks
         if track_uris:
             # Add in chunks of 100 as per API limits
-            for i in range(0, len(track_uris), 100):
-                chunk = track_uris[i:i+100]
-                spotify_call(sp.playlist_add_items, playlist_id, chunk)
-            print(f"Successfully added {len(track_uris)} tracks to '{playlist_name}'.")
+            with ui.progress() as progress:
+                add_task = progress.add_task(
+                    f"[bold {ui.PRIMARY}]Adding tracks to playlist",
+                    total=len(track_uris), detail="",
+                )
+                for i in range(0, len(track_uris), 100):
+                    chunk = track_uris[i:i+100]
+                    spotify_call(sp.playlist_add_items, playlist_id, chunk)
+                    progress.update(add_task, advance=len(chunk))
+            ui.ok(f"Added [bold {ui.PRIMARY}]{len(track_uris)}[/] tracks to "
+                  f"[{ui.VIOLET}]{playlist_name}[/]")
         else:
-            print("No tracks were found on Spotify to add.")
+            ui.warn("No tracks were found on Spotify to add.")
 
+        # Machine-readable handle for the AppleScript launcher — stdout ONLY.
         print(f"SPOTIFY_URI:spotify:playlist:{playlist_id}")
 
     except Exception as e:
-        print(f"Error creating/filling playlist: {e}")
+        ui.err(f"Error creating/filling playlist: {e}")
 
     # 7. Save omitted tracks to missed-tracks/
     if omitted:
@@ -267,12 +299,20 @@ def main():
             writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()
             writer.writerows(omitted)
-        print(f"\n⚠️  {len(omitted)} track(s) omitted (no confident Spotify match):")
+        ui.warn(f"{len(omitted)} track(s) omitted (no confident Spotify match) → {missed_file}")
         for t in omitted:
-            print(f"   - {t['Title']} - {t['Artist']}")
-        print(f"   Saved to {missed_file}")
+            ui.info(f"{t['Title']} - {t['Artist']}")
     else:
-        print("\n✅ All tracks matched successfully — nothing omitted.")
+        ui.ok("All tracks matched successfully — nothing omitted.")
+
+    # 8. Closing summary card
+    ui.summary("BROADCAST COMPLETE", {
+        "Playlist": playlist_name,
+        "Tracks added": len(track_uris),
+        "Omitted": len(omitted),
+        "Snapshot": csv_file,
+        "Missed log": missed_file or "—",
+    })
 
 if __name__ == "__main__":
     main()

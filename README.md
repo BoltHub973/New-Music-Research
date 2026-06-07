@@ -31,11 +31,14 @@ That's it. The script handles everything automatically from start to finish.
    - **Strategy 1**: Title + Artist + Album (most precise)
    - **Strategy 2**: Title + Artist only
    - **Strategy 3**: Title only (broadest fallback — catches cases where Tidal/Spotify artist names differ)
-5. **Detailed logging** — each matched track shows what Spotify actually returned, e.g.:
+5. **Live progress screen** — the whole run renders a futuristic dark HUD with phase rules and live progress bars (powered by [`rich`](https://github.com/Textualize/rich)), narrating every key activity: which playlist is being scanned, how many tracks were scanned vs. recent, search matches/misses in real time, artwork rendering, cover upload, and track adds. Each matched track shows what Spotify actually returned, e.g.:
    ```
-   [FOUND/EXPLICIT] Expectations - Adamn Killa  →  Expectations - Adamn Killa
+   ✓ EXPLICIT  Expectations - Adamn Killa  →  Expectations - Adamn Killa
+   ✕ OMITTED   Obscure Track - Unknown
    ```
-   This makes it easy to spot cases where the Spotify match is a different version of the song
+   This makes it easy to spot cases where the Spotify match is a different version of the song.
+
+   > All of this UI is written to **stderr**; **stdout** carries only the single machine-readable `SPOTIFY_URI:` line, so the AppleScript launcher below keeps working and its captured output stays clean.
 6. **The playlist opens in the Spotify desktop app** automatically once it's been created
 7. **A Keyboard Maestro macro is triggered** _(optional)_ — if `KM_MACRO_UUID` is set in `.env`, the macro is fired via `osascript` at the very end
 
@@ -78,9 +81,11 @@ To add or remove playlists, edit `playlists.json`.
 ### Requirements
 
 ```bash
-pip install playwright spotipy python-dotenv
+pip install playwright spotipy python-dotenv rich
 playwright install chromium
 ```
+
+> You don't actually need to run this — `bootstrap.py` auto-installs any missing packages (including `rich`) and the Chromium browser on first run.
 
 ### Environment Variables
 

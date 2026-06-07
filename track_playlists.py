@@ -3,12 +3,17 @@ import asyncio
 import csv
 import json
 import os
+import sys
 import datetime
 import subprocess
+import ui
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 load_dotenv()
+
+# Date buckets that count as "recent" — shared by the scraper and the live counters.
+RECENT_KEYWORDS = {"today", "yesterday", "this week"}
 
 
 # Generate output filename with timestamp
@@ -22,19 +27,19 @@ def trigger_km_macro(uuid):
     script = f'tell application "Keyboard Maestro Engine" to do script "{uuid}"'
     try:
         subprocess.run(["osascript", "-e", script], check=True)
-        print(f"Successfully triggered KM macro: {uuid}")
+        ui.ok(f"Triggered Keyboard Maestro macro {uuid}")
     except subprocess.CalledProcessError as e:
-        print(f"Failed to trigger KM macro: {e}")
+        ui.err(f"Failed to trigger KM macro: {e}")
 
 def load_playlists(filename="playlists.json"):
     if not os.path.exists(filename):
-        print(f"Error: {filename} not found.")
+        ui.err(f"{filename} not found.")
         return []
     with open(filename, 'r') as f:
         try:
             return json.load(f)
         except json.JSONDecodeError as e:
-            print(f"Error decoding JSON: {e}")
+            ui.err(f"Error decoding JSON: {e}")
             return []
 
 async def extract_visible_tracks(page):
@@ -67,16 +72,34 @@ async def extract_visible_tracks(page):
         return tracks;
     }''')
 
-async def scrape_playlist(page, playlist):
-    print(f"Scraping: {playlist['name']} ({playlist['url']})")
+def _count_recent(tracks):
+    """How many of the scanned tracks fall in the recent date buckets."""
+    return sum(
+        1 for t in tracks if t["Date Added"].strip().lower() in RECENT_KEYWORDS
+    )
+
+async def scrape_playlist(page, playlist, progress, overall):
+    """Scrape one playlist, narrating live scroll/scan progress under `progress`.
+
+    A transient sub-task shows the indeterminate scroll with running
+    scanned/recent counts; on completion it's removed and replaced by a
+    persistent summary line, then the `overall` task is advanced.
+    """
+    # total=None → an indeterminate, pulsing bar (we don't know the track count yet)
+    sub = progress.add_task(
+        f"[{ui.VIOLET}]  └─ {playlist['name']}", total=None, detail="opening…"
+    )
     try:
         await page.goto(playlist['url'])
+        progress.update(sub, detail="waiting for tracklist…")
         # Wait for the tracklist to load
         try:
-           await page.wait_for_selector('[data-test="tracklist-row"]', timeout=10000)
+            await page.wait_for_selector('[data-test="tracklist-row"]', timeout=10000)
         except:
-           print(f"  - Timeout waiting for tracklist on {playlist['name']}")
-           return []
+            progress.remove_task(sub)
+            ui.warn(f"{playlist['name']} — timed out waiting for tracklist")
+            progress.advance(overall)
+            return []
 
         # Give the DOM a moment to fully render after initial load
         await asyncio.sleep(1)
@@ -100,6 +123,11 @@ async def scrape_playlist(page, playlist):
                     all_tracks.append(t)
                     new_this_round += 1
 
+            progress.update(
+                sub,
+                detail=f"scanned {len(all_tracks)} · {_count_recent(all_tracks)} recent",
+            )
+
             if new_this_round == 0:
                 no_new_tracks_count += 1
                 if no_new_tracks_count >= 3:
@@ -112,29 +140,45 @@ async def scrape_playlist(page, playlist):
             await asyncio.sleep(0.8)
 
         # Filter to only recent tracks (today / yesterday / this week)
-        recent_keywords = {"today", "yesterday", "this week"}
         tracks_data = [
             t for t in all_tracks
-            if t["Date Added"].strip().lower() in recent_keywords
+            if t["Date Added"].strip().lower() in RECENT_KEYWORDS
         ]
 
-        print(f"  - Scanned {len(all_tracks)} total tracks, {len(tracks_data)} are recent.")
         # Add source playlist to each track
         for track in tracks_data:
             track["Source Playlist"] = playlist['name']
-            
+
+        progress.remove_task(sub)
+        if tracks_data:
+            ui.ok(
+                f"[{ui.VIOLET}]{playlist['name']}[/] — "
+                f"[bold {ui.PRIMARY}]{len(tracks_data)}[/] recent "
+                f"[{ui.MUTED}]of {len(all_tracks)} scanned[/]"
+            )
+        else:
+            ui.info(f"{playlist['name']} — 0 recent of {len(all_tracks)} scanned")
+        progress.advance(overall)
         return tracks_data
 
     except Exception as e:
-        print(f"  - Error scraping {playlist['name']}: {e}")
+        progress.remove_task(sub)
+        ui.err(f"Error scraping {playlist['name']}: {e}")
+        progress.advance(overall)
         return []
 
 async def main():
+    ui.banner()
+
     playlists = load_playlists()
     if not playlists:
         return
 
     all_tracks = []
+
+    # ── PHASE 1 — Scrape Tidal ───────────────────────────────────────────────
+    ui.phase(1, 3, "SCRAPE TIDAL")
+    ui.step(f"Launching headless browser for {len(playlists)} playlists")
 
     async with async_playwright() as p:
         try:
@@ -142,8 +186,7 @@ async def main():
         except Exception as e:
             err_str = str(e)
             if "Executable doesn't exist" in err_str or "playwright install" in err_str:
-                print("Playwright browsers not found. Installing...")
-                import sys
+                ui.warn("Playwright browser not found — installing Chromium…")
                 subprocess.run([sys.executable, "-m", "playwright", "install"], check=True)
                 browser = await p.chromium.launch(headless=True)
             else:
@@ -151,68 +194,72 @@ async def main():
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
 
-        for playlist in playlists:
-            tracks = await scrape_playlist(page, playlist)
-            all_tracks.extend(tracks)
-        
+        with ui.progress() as progress:
+            overall = progress.add_task(
+                f"[bold {ui.PRIMARY}]Scanning playlists",
+                total=len(playlists),
+                detail="",
+            )
+            for playlist in playlists:
+                tracks = await scrape_playlist(page, playlist, progress, overall)
+                all_tracks.extend(tracks)
+
         await browser.close()
 
+    # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
+    ui.phase(2, 3, "DEDUPE & SNAPSHOT")
+    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
+
     if all_tracks:
-        print(f"\nTotal matches found before deduping: {len(all_tracks)}")
-        
+        ui.step(f"{len(all_tracks)} recent matches found across all playlists")
+
         # Remove duplicates based on Artist, Album, Title
         unique_tracks = []
         seen_tracks = set()
-        
         for track in all_tracks:
-            # Create a unique key for the track
             track_key = (track['Artist'], track['Album'], track['Title'])
-            
             if track_key not in seen_tracks:
                 seen_tracks.add(track_key)
                 unique_tracks.append(track)
-                
-        print(f"Total unique matches found: {len(unique_tracks)}")
+
+        dupes = len(all_tracks) - len(unique_tracks)
+        ui.ok(f"{len(unique_tracks)} unique tracks "
+              f"[{ui.MUTED}]({dupes} duplicate{'s' if dupes != 1 else ''} removed)[/]")
 
         # Write to CSV
-        keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)
             dict_writer.writeheader()
             dict_writer.writerows(unique_tracks)
-        print(f"Saved to {output_file}")
-        
-        # Trigger Spotify Export
-        print("\n--- Starting Spotify Export ---")
+        ui.ok(f"Snapshot saved → [{ui.PRIMARY}]{output_file}[/]")
+
+        # ── PHASE 3 — Hand off to the Spotify exporter ───────────────────────
+        ui.phase(3, 3, "EXPORT TO SPOTIFY")
+        ui.info("Handing off to export_to_spotify.py")
         try:
-            result = subprocess.run(
-                ["python3", "export_to_spotify.py", output_file],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            # Print all output so SPOTIFY_URI: tag is visible to AppleScript
-            print(result.stdout)
+            # Stream live (no capture): the exporter renders its own progress to
+            # stderr while its single SPOTIFY_URI line flows through stdout to
+            # any AppleScript launcher watching this process.
+            subprocess.run([sys.executable, "export_to_spotify.py", output_file], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"Error running Spotify export: {e}")
+            ui.err(f"Spotify export failed: {e}")
         except Exception as e:
-            print(f"An error occurred: {e}")
-            
+            ui.err(f"An error occurred during export: {e}")
+
     else:
-        print("\nNo matching tracks found (Yesterday/This Week).")
+        ui.warn("No matching tracks found (Today / Yesterday / This Week).")
         # Create empty CSV with headers just in case
-        keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)
             dict_writer.writeheader()
-        print(f"Created empty {output_file}")
+        ui.info(f"Created empty snapshot → {output_file}")
 
     # Trigger Keyboard Maestro macro (optional — only runs if KM_MACRO_UUID is set in .env)
     km_uuid = os.getenv("KM_MACRO_UUID")
     if km_uuid:
         trigger_km_macro(km_uuid)
     else:
-        print("KM_MACRO_UUID not set — skipping Keyboard Maestro trigger.")
+        ui.info("KM_MACRO_UUID not set — skipping Keyboard Maestro trigger.")
 
 if __name__ == "__main__":
     asyncio.run(main())
