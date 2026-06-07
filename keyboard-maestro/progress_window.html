@@ -187,6 +187,17 @@
   button.primary{background:var(--cyan); color:#001016; border-color:var(--cyan); box-shadow:0 0 18px var(--cyan-glow);}
   button.primary:hover{background:#5cf6ff; box-shadow:0 0 30px var(--cyan-glow);}
 
+  /* big top-right Close — appears only once the run has completed */
+  .top-close{position:fixed; top:24px; right:30px; z-index:60; display:none;
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.05rem;
+    letter-spacing:.12em; text-transform:uppercase; padding:15px 34px; border-radius:12px;
+    cursor:pointer; transition:all .2s ease;
+    background:rgba(0,240,255,.1); border:1px solid var(--cyan); color:var(--cyan);
+    box-shadow:0 0 22px var(--cyan-glow);}
+  .top-close:hover{background:var(--cyan); color:#001016; box-shadow:0 0 34px var(--cyan-glow);}
+  .top-close:focus-visible{outline:2px solid var(--cyan); outline-offset:3px;}
+  .top-close.show{display:inline-flex; align-items:center; gap:10px; animation:rise .4s ease-out both;}
+
   ::-webkit-scrollbar{width:7px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1); border-radius:4px;}
@@ -205,6 +216,7 @@
 <body data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
   <div class="bg mesh"></div>
   <div class="bg grid"></div>
+  <button id="topClose" class="top-close" type="button" aria-label="Close window">&times; Close</button>
   <div class="wrap">
     <header>
       <div>
@@ -304,6 +316,8 @@
 
     function close(){ try{ KM.Cancel(); }catch(e){ try{ window.close(); }catch(e2){} } }
     document.getElementById('closeBtn').addEventListener('click', close);
+    var topClose = document.getElementById('topClose');
+    topClose.addEventListener('click', close);
 
     function renderTracks(ul, tracks){
       ul.innerHTML = '';
@@ -393,10 +407,12 @@
       els.overallLabel.textContent = o.label || s.phaseLabel || 'Working';
       els.oCur.textContent = o.current||0;
       els.oTot.textContent = o.total||0;
+      var hasPct = (typeof o.pct === 'number') && isFinite(o.pct);
       var hasTotal = (o.total||0) > 0;
-      var pct = hasTotal ? Math.round((o.current/o.total)*100) : 0;
+      var pct = hasPct ? Math.max(0, Math.min(100, Math.round(o.pct)))
+                       : (hasTotal ? Math.round((o.current/o.total)*100) : 0);
       if(s.done && s.ok) pct = 100;
-      if(hasTotal || (s.done && s.ok)){
+      if(hasPct || hasTotal || (s.done && s.ok)){
         els.bar.classList.remove('indeterminate');
         els.fill.style.width = pct + '%';
         els.pct.textContent = pct + '%';
@@ -420,6 +436,7 @@
         els.doneMark.innerHTML = s.ok ? '&check;' : '&times;';
         els.doneMsg.textContent = s.message || (s.ok ? 'Complete' : 'Finished with errors');
         els.liveLabel.textContent = 'Complete';
+        topClose.classList.add('show');
         els.spin.style.animation = 'none';
         // Swap in the scraped-vs-missed results page and leave it up — the user
         // closes it manually (no auto-dismiss) so there's time to read it.

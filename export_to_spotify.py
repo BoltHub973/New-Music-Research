@@ -12,6 +12,12 @@ import ui
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
+# Keyboard Maestro progress bridge lives in keyboard-maestro/ (a hyphenated,
+# non-importable folder). When this exporter runs as a child of the pipeline it
+# drives the same live HUD; standalone (no KM Engine) every call is a no-op.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "keyboard-maestro"))
+import km_progress as km
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -75,6 +81,10 @@ def spotify_call(fn, *args, **kwargs):
                 raise
 
 def main():
+    # Inherit the live HUD state the pipeline built up (log, stats, phase) so we
+    # can keep it animating with real export progress instead of a frozen spinner.
+    km.hydrate()
+
     # 1. basic setup
     if len(sys.argv) > 1:
         csv_file = sys.argv[1]
@@ -170,20 +180,32 @@ def main():
         return [t for t in items if artist_matches(t, expected_artist)]
 
     ui.section("MATCH TRACKS ON SPOTIFY")
+    # Switch the HUD off the blocking "working" spinner and onto a real,
+    # data-driven progress bar that advances as each track is matched. The bar
+    # represents the *whole* export: matching fills it to MATCH_WEIGHT%, and the
+    # publishing steps tick it the rest of the way to 100%.
+    n_tracks = len(tracks_to_search)
+    MATCH_WEIGHT = 90  # % of the bar allotted to the (long) match phase
+    km.clear_busy()
+    km.overall(0, n_tracks, "MATCHING ON SPOTIFY", pct=0)
     with ui.progress() as progress:
         match_task = progress.add_task(
             f"[bold {ui.PRIMARY}]Searching Spotify",
             total=len(tracks_to_search),
             detail="",
         )
-        for track in tracks_to_search:
+        for idx, track in enumerate(tracks_to_search, 1):
             title = track.get('Title', '').strip()
             artist = track.get('Artist', '').strip()
             album = track.get('Album', '').strip()
 
             if not title or not artist:
                 progress.advance(match_task)
+                km.overall(idx, n_tracks, "MATCHING ON SPOTIFY", pct=idx / n_tracks * MATCH_WEIGHT)
                 continue
+
+            km.current(f"{title} — {artist}",
+                       f"{len(track_uris)} matched · {len(omitted)} missed", "exporting")
 
             # Strategy 1: Title + Artist + Album
             res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)} album:{clean_query(album)}", limit=5, type='track')
@@ -218,6 +240,7 @@ def main():
                 advance=1,
                 detail=f"[{ui.OK}]{len(track_uris)} matched[/] · [{ui.ERR}]{len(omitted)} missed[/]",
             )
+            km.overall(idx, n_tracks, "MATCHING ON SPOTIFY", pct=idx / n_tracks * MATCH_WEIGHT)
 
     # 5. Create Playlist
     ui.section("PUBLISH PLAYLIST")
@@ -230,6 +253,8 @@ def main():
 
     try:
         ui.step(f"Creating playlist [{ui.VIOLET}]{playlist_name}[/]")
+        km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=92)
+        km.current("Creating playlist", playlist_name, "exporting")
         playlist = spotify_call(sp.user_playlist_create, user_id, playlist_name, public=False)
         playlist_id = playlist['id']
 
@@ -244,6 +269,8 @@ def main():
                 "generated-artwork",
                 f"ARTWORK {current_timestamp}.jpg",
             )
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=94)
+            km.current("Rendering cover artwork", "HTML/CSS → Playwright → JPEG", "exporting")
             with ui.progress() as progress:
                 art_task = progress.add_task(
                     f"[bold {ui.PRIMARY}]Rendering cover artwork",
@@ -260,6 +287,8 @@ def main():
                 ui.info(f"Falling back to static artwork: {ARTWORK_PATH}")
 
         if artwork_to_upload and os.path.exists(artwork_to_upload):
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=97)
+            km.current("Uploading cover art", "Sending artwork to Spotify", "exporting")
             with open(artwork_to_upload, 'rb') as img_file:
                 image_b64 = base64.b64encode(img_file.read()).decode('utf-8')
             spotify_call(sp.playlist_upload_cover_image, playlist_id, image_b64)
@@ -269,6 +298,9 @@ def main():
 
         # 6. Add Tracks
         if track_uris:
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=99)
+            km.current("Adding tracks to playlist",
+                       f"{len(track_uris)} tracks", "exporting")
             # Add in chunks of 100 as per API limits
             with ui.progress() as progress:
                 add_task = progress.add_task(

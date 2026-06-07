@@ -30,7 +30,7 @@ _state = {
     "phase": 0,
     "phaseTotal": 3,
     "phaseLabel": "INITIALIZING",
-    "overall": {"current": 0, "total": 0, "label": ""},
+    "overall": {"current": 0, "total": 0, "label": "", "pct": None},
     "current": {"name": "", "detail": "", "status": "idle"},
     "log": [],
     "stats": {},
@@ -85,6 +85,42 @@ def reset() -> None:
     _push(force=True)
 
 
+def hydrate() -> None:
+    """Pull the live KM variable into this process's state so a *child* process
+    (the Spotify exporter) can keep driving the same HUD — preserving the log,
+    stats and phase accumulated by the parent instead of resetting them. A no-op
+    when the KM Engine isn't running (e.g. the exporter is run by hand)."""
+    try:
+        out = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                'tell application "Keyboard Maestro Engine" to getvariable "' + VAR + '"',
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        raw = (out.stdout or "").strip()
+        if raw:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                _state.update(data)
+    except Exception:
+        pass
+
+
+def clear_busy() -> None:
+    """Leave the full-panel 'working' message and return to the live progress
+    widgets (used when a previously-blocking step starts reporting real
+    incremental progress, e.g. the Spotify match loop)."""
+    _state["busy"] = False
+    _state["busyLabel"] = ""
+    _state["busyDetail"] = ""
+    _push(force=True)
+
+
 def phase(index: int, total: int, label: str) -> None:
     _state["phase"] = index
     _state["phaseTotal"] = total
@@ -92,11 +128,16 @@ def phase(index: int, total: int, label: str) -> None:
     _push(force=True)
 
 
-def overall(current, total, label=None) -> None:
+def overall(current, total, label=None, pct=None) -> None:
     _state["overall"]["current"] = current
     _state["overall"]["total"] = total
     if label is not None:
         _state["overall"]["label"] = label
+    # Optional explicit bar percentage. When set it drives the fill independently
+    # of current/total, so the count can keep showing "tracks" while the bar
+    # reflects the whole export (matching + publishing). None → fall back to
+    # current/total in the window.
+    _state["overall"]["pct"] = pct
     _push(force=True)
 
 

@@ -196,13 +196,13 @@ async def scrape_playlist(page, playlist, progress, overall):
         if tracks_data:
             ui.ok(
                 f"[{ui.VIOLET}]{playlist['name']}[/] — "
-                f"[bold {ui.PRIMARY}]{len(tracks_data)}[/] recent "
-                f"[{ui.MUTED}]of {len(all_tracks)} scanned[/]"
+                f"[bold {ui.PRIMARY}]{len(tracks_data)}[/] matches "
+                f"[{ui.MUTED}]out of {len(all_tracks)} scanned[/]"
             )
-            km.log(f"{playlist['name']} — {len(tracks_data)} recent of {len(all_tracks)} scanned")
+            km.log(f"{playlist['name']} — {len(tracks_data)} matches out of {len(all_tracks)} scanned")
         else:
-            ui.info(f"{playlist['name']} — 0 recent of {len(all_tracks)} scanned")
-            km.log(f"{playlist['name']} — 0 recent of {len(all_tracks)} scanned")
+            ui.info(f"{playlist['name']} — 0 matches out of {len(all_tracks)} scanned")
+            km.log(f"{playlist['name']} — 0 matches out of {len(all_tracks)} scanned")
         progress.advance(overall)
         return tracks_data
 
@@ -323,6 +323,11 @@ async def main():
             if spotify_uri:
                 print(f"SPOTIFY_URI:{spotify_uri}")
                 sys.stdout.flush()  # keep the stdout data contract intact for any launcher watching it
+
+            # The child exporter already left busy-mode to drive a real progress
+            # bar; clear our own stale busy flag so resuming here doesn't flash
+            # the working spinner before the results page appears.
+            km.clear_busy()
 
             # Hand the scraped + missed track lists to the progress window so it
             # can render a results page once the run completes.
