@@ -56,8 +56,9 @@
     text-shadow:0 0 10px var(--cyan-glow), 0 0 34px var(--cyan-glow);
   }
   .subtitle{font-size:.92rem; letter-spacing:.22em; color:var(--violet); margin-top:8px; text-transform:uppercase;}
+  .hud-right{display:flex; align-items:center; gap:26px; padding-top:6px;}
   .live{display:flex; align-items:center; gap:9px; font-family:'JetBrains Mono',monospace;
-    font-size:.78rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; white-space:nowrap; padding-top:6px;}
+    font-size:.78rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; white-space:nowrap;}
   .live .dot{width:9px; height:9px; border-radius:50%; background:var(--ok); box-shadow:0 0 10px var(--ok); animation:pulse 1.6s ease-in-out infinite;}
 
   /* phase rail */
@@ -187,8 +188,8 @@
   button.primary{background:var(--cyan); color:#001016; border-color:var(--cyan); box-shadow:0 0 18px var(--cyan-glow);}
   button.primary:hover{background:#5cf6ff; box-shadow:0 0 30px var(--cyan-glow);}
 
-  /* big top-right Close — appears only once the run has completed */
-  .top-close{position:fixed; top:24px; right:30px; z-index:60; display:none;
+  /* big header Close — appears only once the run has completed */
+  .top-close{display:none;
     font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.05rem;
     letter-spacing:.12em; text-transform:uppercase; padding:15px 34px; border-radius:12px;
     cursor:pointer; transition:all .2s ease;
@@ -208,22 +209,21 @@
   @keyframes slide{0%{left:-40%;}100%{left:100%;}}
   @keyframes rise{from{opacity:0; transform:translateY(14px);}to{opacity:1; transform:translateY(0);}}
   @keyframes rotate{to{transform:rotate(360deg);}}
-  @media (prefers-reduced-motion: reduce){
-    *{animation:none !important; transition:none !important;}
-  }
 </style>
 </head>
 <body data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
   <div class="bg mesh"></div>
   <div class="bg grid"></div>
-  <button id="topClose" class="top-close" type="button" aria-label="Close window">&times; Close</button>
   <div class="wrap">
     <header>
       <div>
         <h1 class="title">DX&nbsp;BROADCAST&nbsp;SYSTEM</h1>
         <div class="subtitle">New Music Research &middot; Tidal &rarr; Spotify</div>
       </div>
-      <div class="live"><span class="dot"></span><span id="liveLabel">Live</span></div>
+      <div class="hud-right">
+        <div class="live"><span class="dot"></span><span id="liveLabel">Live</span></div>
+        <button id="topClose" class="top-close" type="button" aria-label="Close window">&times; Close</button>
+      </div>
     </header>
 
     <div class="phases" id="phases">
