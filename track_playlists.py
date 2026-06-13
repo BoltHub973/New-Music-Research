@@ -1,5 +1,4 @@
 import bootstrap
-import asyncio
 import csv
 import json
 import os
@@ -7,18 +6,25 @@ import sys
 import datetime
 import subprocess
 import ui
+from pathlib import Path
 
 # Keyboard Maestro integration lives in keyboard-maestro/ (a hyphenated, non-importable
 # folder name), so make it importable before pulling in the progress bridge.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "keyboard-maestro"))
 import km_progress as km
 from dotenv import load_dotenv
-from playwright.async_api import async_playwright
+import tidalapi
 
 load_dotenv()
 
-# Date buckets that count as "recent" — shared by the scraper and the live counters.
-RECENT_KEYWORDS = {"today", "yesterday", "this week"}
+# A track counts as "recent" if it was added to the playlist within this many days.
+# (The old web scraper matched the UI's "today / yesterday / this week" buckets;
+# the API gives real timestamps, so this is now an exact rolling window.)
+RECENT_DAYS = 7
+
+# OAuth session token for the Tidal API, created once by `python3 tidal_login.py`
+# and refreshed automatically on every run. Lives outside the repo on purpose.
+TIDAL_SESSION_FILE = Path.home() / ".config" / "new-music-research" / "tidal-session.json"
 
 
 # Generate output filename with timestamp
@@ -77,143 +83,97 @@ def load_playlists(filename="playlists.json"):
             ui.err(f"Error decoding JSON: {e}")
             return []
 
-async def extract_visible_tracks(page):
-    """Extract tracks currently visible in the virtualized DOM."""
-    return await page.evaluate('''() => {
-        const tracks = [];
-        const rows = document.querySelectorAll('[data-test="tracklist-row"]');
-        
-        rows.forEach(row => {
-            const dateAddedCell = row.querySelector('[data-test="track-row-date-added"]');
-            if (!dateAddedCell) return;
-            
-            const dateText = dateAddedCell.innerText.trim();
-            const lowerDateText = dateText.toLowerCase();
-            
-            // Collect ALL tracks — we filter by date below but also need
-            // to know when we've scrolled past the recent section.
-            const titleElement = row.querySelector('[data-test="table-row-title"] [data-test="table-cell-title"]');
-            const artistElements = row.querySelectorAll('[data-test="track-row-artist"] a'); 
-            const albumElement = row.querySelector('[data-test="track-row-album"] a');
-            const artistNames = Array.from(artistElements).map(a => a.innerText.trim());
-            
-            tracks.push({
-                "Title": titleElement ? titleElement.innerText.trim() : "Unknown Title",
-                "Artist": artistNames.length > 0 ? artistNames.join(', ') : "Unknown Artist",
-                "Album": albumElement ? albumElement.innerText.trim() : "Unknown Album",
-                "Date Added": dateText
-            });
-        });
-        return tracks;
-    }''')
+def _login_print(msg):
+    """Surface Tidal login-flow messages (the approval link) in both UIs."""
+    ui.warn(msg)
+    km.log(msg)
 
-def _count_recent(tracks):
-    """How many of the scanned tracks fall in the recent date buckets."""
-    return sum(
-        1 for t in tracks if t["Date Added"].strip().lower() in RECENT_KEYWORDS
-    )
+def tidal_session():
+    """Restore the saved Tidal API session (refreshing tokens as needed).
 
-async def scrape_playlist(page, playlist, progress, overall):
-    """Scrape one playlist, narrating live scroll/scan progress under `progress`.
-
-    A transient sub-task shows the indeterminate scroll with running
-    scanned/recent counts; on completion it's removed and replaced by a
-    persistent summary line, then the `overall` task is advanced.
+    If no valid session exists, tidalapi starts a device-login flow: it prints a
+    link.tidal.com URL (surfaced via ui/km) and waits up to 5 minutes for the
+    user to approve it. Returns None if login ultimately fails.
     """
-    # total=None → an indeterminate, pulsing bar (we don't know the track count yet)
-    sub = progress.add_task(
-        f"[{ui.VIOLET}]  └─ {playlist['name']}", total=None, detail="opening…"
-    )
-    km.current(playlist['name'], "opening…", "opening")
+    session = tidalapi.Session()
     try:
-        await page.goto(playlist['url'])
-        progress.update(sub, detail="waiting for tracklist…")
-        km.current(playlist['name'], "waiting for tracklist…", "opening")
-        # Wait for the tracklist to load
-        try:
-            await page.wait_for_selector('[data-test="tracklist-row"]', timeout=10000)
-        except:
-            progress.remove_task(sub)
-            ui.warn(f"{playlist['name']} — timed out waiting for tracklist")
-            km.log(f"{playlist['name']} — timed out waiting for tracklist")
-            progress.advance(overall)
-            return []
+        TIDAL_SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if session.login_session_file(TIDAL_SESSION_FILE, fn_print=_login_print):
+            return session
+    except TimeoutError:
+        ui.err("Tidal login link expired — run `python3 tidal_login.py`, approve on your phone, then re-run.")
+    except Exception as e:
+        ui.err(f"Tidal login failed: {e}")
+    return None
 
-        # Give the DOM a moment to fully render after initial load
-        await asyncio.sleep(1)
+def fetch_playlist(session, playlist, progress, overall):
+    """Fetch one playlist via the Tidal API, narrating live progress under `progress`.
 
-        # Tidal uses a virtualized list: only ~16-18 rows exist in the DOM
-        # at any given time. We must scroll the #main container (not window)
-        # and collect tracks at each scroll position, deduplicating by key.
-        seen_keys = set()
-        all_tracks = []
-        no_new_tracks_count = 0
+    A transient sub-task shows the running scanned/recent counts; on completion
+    it's removed and replaced by a persistent summary line, then the `overall`
+    task is advanced.
+    """
+    sub = progress.add_task(
+        f"[{ui.VIOLET}]  └─ {playlist['name']}", total=None, detail="fetching…"
+    )
+    km.current(playlist['name'], "fetching…", "opening")
+    try:
+        playlist_uuid = playlist['url'].rstrip('/').split('/')[-1]
+        pl = session.playlist(playlist_uuid)
+        progress.update(sub, total=pl.num_tracks or None)
 
-        for scroll_attempt in range(50):  # Max 50 scroll attempts (handles 60+ track playlists)
-            # Extract whatever tracks are currently in the DOM
-            visible = await extract_visible_tracks(page)
-
-            new_this_round = 0
-            for t in visible:
-                key = (t["Title"], t["Artist"])
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    all_tracks.append(t)
-                    new_this_round += 1
-
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=RECENT_DAYS)
+        tracks_data = []
+        scanned = 0
+        offset = 0
+        while True:
+            batch = pl.tracks(limit=100, offset=offset)
+            if not batch:
+                break
+            for t in batch:
+                scanned += 1
+                if t.date_added and t.date_added >= cutoff:
+                    artists = ", ".join(a.name for a in (t.artists or []) if a.name)
+                    tracks_data.append({
+                        "Title": t.name or "Unknown Title",
+                        "Artist": artists or "Unknown Artist",
+                        "Album": (t.album.name if t.album else None) or "Unknown Album",
+                        "Date Added": t.date_added.astimezone().strftime("%Y-%m-%d"),
+                        "Source Playlist": playlist['name'],
+                    })
             progress.update(
-                sub,
-                detail=f"scanned {len(all_tracks)} · {_count_recent(all_tracks)} recent",
+                sub, completed=scanned,
+                detail=f"scanned {scanned} · {len(tracks_data)} recent",
             )
             km.current(
                 playlist['name'],
-                f"scanned {len(all_tracks)} · {_count_recent(all_tracks)} recent",
+                f"scanned {scanned} · {len(tracks_data)} recent",
                 "scanning",
             )
-
-            if new_this_round == 0:
-                no_new_tracks_count += 1
-                if no_new_tracks_count >= 3:
-                    break  # Three consecutive scrolls with no new tracks — we're at the end
-            else:
-                no_new_tracks_count = 0
-
-            # Scroll the #main container (Tidal's actual scrollable element)
-            await page.evaluate('document.getElementById("main").scrollBy(0, 600)')
-            await asyncio.sleep(0.8)
-
-        # Filter to only recent tracks (today / yesterday / this week)
-        tracks_data = [
-            t for t in all_tracks
-            if t["Date Added"].strip().lower() in RECENT_KEYWORDS
-        ]
-
-        # Add source playlist to each track
-        for track in tracks_data:
-            track["Source Playlist"] = playlist['name']
+            offset += len(batch)
 
         progress.remove_task(sub)
         if tracks_data:
             ui.ok(
                 f"[{ui.VIOLET}]{playlist['name']}[/] — "
                 f"[bold {ui.PRIMARY}]{len(tracks_data)}[/] matches "
-                f"[{ui.MUTED}]out of {len(all_tracks)} scanned[/]"
+                f"[{ui.MUTED}]out of {scanned} scanned[/]"
             )
-            km.log(f"{playlist['name']} — {len(tracks_data)} matches out of {len(all_tracks)} scanned")
+            km.log(f"{playlist['name']} — {len(tracks_data)} matches out of {scanned} scanned")
         else:
-            ui.info(f"{playlist['name']} — 0 matches out of {len(all_tracks)} scanned")
-            km.log(f"{playlist['name']} — 0 matches out of {len(all_tracks)} scanned")
+            ui.info(f"{playlist['name']} — 0 matches out of {scanned} scanned")
+            km.log(f"{playlist['name']} — 0 matches out of {scanned} scanned")
         progress.advance(overall)
         return tracks_data
 
     except Exception as e:
         progress.remove_task(sub)
-        ui.err(f"Error scraping {playlist['name']}: {e}")
-        km.log(f"Error scraping {playlist['name']}: {e}")
+        ui.err(f"Error fetching {playlist['name']}: {e}")
+        km.log(f"Error fetching {playlist['name']}: {e}")
         progress.advance(overall)
         return []
 
-async def main():
+def main():
     ui.banner()
     km.reset()
 
@@ -224,38 +184,27 @@ async def main():
 
     all_tracks = []
 
-    # ── PHASE 1 — Scrape Tidal ───────────────────────────────────────────────
+    # ── PHASE 1 — Scrape Tidal (via the official API, not the website) ──────
     ui.phase(1, 3, "SCRAPE TIDAL")
     km.phase(1, 3, "SCRAPE TIDAL")
     km.overall(0, len(playlists), "Scanning playlists")
-    ui.step(f"Launching headless browser for {len(playlists)} playlists")
+    ui.step(f"Connecting to the Tidal API for {len(playlists)} playlists")
 
-    async with async_playwright() as p:
-        try:
-            browser = await p.chromium.launch(headless=True)
-        except Exception as e:
-            err_str = str(e)
-            if "Executable doesn't exist" in err_str or "playwright install" in err_str:
-                ui.warn("Playwright browser not found — installing Chromium…")
-                subprocess.run([sys.executable, "-m", "playwright", "install"], check=True)
-                browser = await p.chromium.launch(headless=True)
-            else:
-                raise
-        context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
-        page = await context.new_page()
+    session = tidal_session()
+    if not session:
+        km.finish(ok=False, message="Tidal login required — run `python3 tidal_login.py`")
+        return
 
-        with ui.progress() as progress:
-            overall = progress.add_task(
-                f"[bold {ui.PRIMARY}]Scanning playlists",
-                total=len(playlists),
-                detail="",
-            )
-            for idx, playlist in enumerate(playlists):
-                tracks = await scrape_playlist(page, playlist, progress, overall)
-                all_tracks.extend(tracks)
-                km.overall(idx + 1, len(playlists))
-
-        await browser.close()
+    with ui.progress() as progress:
+        overall = progress.add_task(
+            f"[bold {ui.PRIMARY}]Scanning playlists",
+            total=len(playlists),
+            detail="",
+        )
+        for idx, playlist in enumerate(playlists):
+            tracks = fetch_playlist(session, playlist, progress, overall)
+            all_tracks.extend(tracks)
+            km.overall(idx + 1, len(playlists))
 
     # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
     ui.phase(2, 3, "DEDUPE & SNAPSHOT")
@@ -348,8 +297,8 @@ async def main():
             km.finish(ok=False, message="An error occurred during export")
 
     else:
-        ui.warn("No matching tracks found (Today / Yesterday / This Week).")
-        km.finish(ok=True, message="No new tracks found (Today / Yesterday / This Week)")
+        ui.warn(f"No matching tracks found (added in the last {RECENT_DAYS} days).")
+        km.finish(ok=True, message=f"No new tracks found (added in the last {RECENT_DAYS} days)")
         # Create empty CSV with headers just in case
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)
@@ -364,4 +313,4 @@ async def main():
         ui.info("KM_MACRO_UUID not set — skipping Keyboard Maestro trigger.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

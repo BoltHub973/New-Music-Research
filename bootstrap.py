@@ -6,7 +6,8 @@ def bootstrap():
         "python-dotenv": "dotenv",
         "spotipy": "spotipy",
         "playwright": "playwright",
-        "rich": "rich"
+        "rich": "rich",
+        "tidalapi": "tidalapi"
     }
 
     in_venv = sys.prefix != sys.base_prefix

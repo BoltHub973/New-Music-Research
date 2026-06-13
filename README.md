@@ -1,6 +1,6 @@
 # 🪁 Generate Spotify Playlist featuring the latest Hip-Hop & R&B tracks
 
-Scrapes new tracks from curated Tidal playlists and exports them directly into a new Spotify playlist.
+Collects new tracks from curated Tidal playlists (via the Tidal API) and exports them directly into a new Spotify playlist.
 
 ---
 
@@ -16,7 +16,7 @@ That's it. The script handles everything automatically from start to finish.
 
 ## ✅ What to Expect
 
-1. **Tidal is scraped** — every playlist in `playlists.json` is visited and checked for tracks added **Today**, **Yesterday**, or **This Week**
+1. **Tidal is fetched via its API** — every playlist in `playlists.json` is checked for tracks added **within the last 7 days**. No browser, no scraping — the run takes seconds and can't trip Tidal's bot detection (which once blocked this machine's IP when this step was a headless-browser scraper)
    - All artists on a track are captured (not just the first), so featuring/co-artist info is preserved
 2. **A CSV is saved** — a timestamped file is created in the `scraped-files` folder, e.g.:
    ```
@@ -50,7 +50,7 @@ That's it. The script handles everything automatically from start to finish.
 
 The project organizes its output into two main directories:
 
-- **`scraped-files/`** — Stores timestamped CSVs of every matching track found on Tidal (Today/Yesterday/This Week). These serve as a historical record of what was "scraped" before the Spotify matching process begins.
+- **`scraped-files/`** — Stores timestamped CSVs of every matching track found on Tidal (added in the last 7 days). These serve as a historical record of what was collected before the Spotify matching process begins.
 - **`missed-tracks/`** — If a track found on Tidal cannot be confidently matched on Spotify (e.g., due to different artist formatting or if the track is not yet on Spotify), it is saved here in a `MISSED` CSV. This makes it easy to manually find and add any tracks the script couldn't automate.
 - **`generated-artwork/`** — Stores the timestamped JPEG cover art generated for each playlist run (e.g. `ARTWORK 02-20-26__10.15.00 PM.jpg`). Each cover is rendered fresh via `generate_artwork.py` (HTML/CSS → Playwright → JPEG) and stamped with that day's date. To preview a cover without creating a playlist, run `python3 generate_artwork.py 2026-05-22`.
 
@@ -81,11 +81,19 @@ To add or remove playlists, edit `playlists.json`.
 ### Requirements
 
 ```bash
-pip install playwright spotipy python-dotenv rich
+pip install tidalapi playwright spotipy python-dotenv rich
 playwright install chromium
 ```
 
-> You don't actually need to run this — `bootstrap.py` auto-installs any missing packages (including `rich`) and the Chromium browser on first run.
+> You don't actually need to run this — `bootstrap.py` auto-installs any missing packages on first run. (Playwright/Chromium is only used by `generate_artwork.py` to render the playlist cover — Tidal itself is reached through its API, not a browser.)
+
+### Tidal login (one-time)
+
+```bash
+python3 tidal_login.py
+```
+
+Prints a `link.tidal.com` URL — open it on any device (your phone on cellular data works even if this network is blocked by Tidal's website) and approve. The session token is saved to `~/.config/new-music-research/tidal-session.json` and refreshes itself on every run.
 
 ### Environment Variables
 
@@ -136,7 +144,7 @@ end if
 
 **How it works:**
 
-1. Runs `track_playlists.py`, which scrapes Tidal and calls `export_to_spotify.py`
+1. Runs `track_playlists.py`, which fetches the Tidal playlists via the API and calls `export_to_spotify.py`
 2. `export_to_spotify.py` prints a `SPOTIFY_URI:` tag after the playlist is created
 3. AppleScript captures that URI and opens the playlist directly in the **Spotify desktop app**
 
