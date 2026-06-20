@@ -1,24 +1,30 @@
-# Keyboard Maestro
+# Progress HUD (formerly Keyboard Maestro)
 
-Everything in this folder powers the live **Keyboard Maestro** progress window for
-the DX broadcast pipeline. It is optional — if Keyboard Maestro isn't running, the
-pipeline ignores it and behaves exactly the same.
+This folder holds the live progress **HUD** and the channel that feeds it. It used to
+drive a Keyboard Maestro **Custom HTML Prompt**; it now feeds the standalone
+**[New Music Research](../app)** macOS app, which owns a real, resizable window instead
+of KM's non-resizable HTML prompt. The pieces are unchanged enough that the same HTML
+runs in both.
 
 | File | Role |
 | :--- | :--- |
-| `km_progress.py` | Pushes live pipeline state (phase, counts, log, scraped/missed tracks, done) into the KM global variable `NMRProgress` via `osascript`. Imported by `track_playlists.py`. |
-| `progress_window.html` | The KM **Custom HTML Prompt** UI. Polls `NMRProgress` every 300 ms and renders the futuristic progress HUD, then a scraped-vs-missed results page when the run completes. |
+| `km_progress.py` | Writes live pipeline state (phase, counts, log, scraped/missed tracks, done) **atomically to `~/.config/new-music-research/progress.json`**. Imported by `track_playlists.py` and `export_to_spotify.py`. (Keeps its historical name so those imports don't change.) |
+| `progress_window.html` | The HUD UI. Polls the progress every 300 ms and renders the futuristic HUD, then a scraped-vs-missed results page when the run completes. The app bundles a copy of this file at build time. |
 
-## ⚠️ After moving this folder
+## How the HUD gets its data
 
-`progress_window.html` is loaded **by your Keyboard Maestro macro**, not by the
-Python code, so its path is *not* tracked in this repo. If you moved this folder
-(or renamed the project), update the macro's "Custom HTML Prompt" / "Read file"
-action to point at the new location:
+The HTML was written for a KM prompt, so it talks to a `window.KeyboardMaestro` object
+(`GetVariable('NMRProgress')`, `ResizeWindow`, `Cancel`). The app injects a tiny native
+shim implementing exactly those calls and feeds it the polled `progress.json` — so the
+HTML needs **no** changes to run in the app. See [`app/`](../app).
+
+## If you still use the old Keyboard Maestro macro
+
+`km_progress.py` no longer writes the KM `NMRProgress` variable, so the old Custom HTML
+Prompt window won't update anymore. Point your launcher at the app instead:
 
 ```
-.../New Music Research/keyboard-maestro/progress_window.html
+open -a "New Music Research"
 ```
 
-`km_progress.py` is found automatically — `track_playlists.py` adds this folder to
-`sys.path` at startup, so no macro change is needed for it.
+(Build the app first: `cd app && ./build.sh`.)

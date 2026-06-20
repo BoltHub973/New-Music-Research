@@ -1,29 +1,37 @@
 """
-Push live pipeline progress to a Keyboard Maestro variable so the standalone
-HTML progress window (a KM Custom HTML Prompt) can render it.
+Push live pipeline progress to a JSON file that the standalone **New Music
+Research** macOS app reads and renders.
 
-The window polls the global KM variable ``NMRProgress`` via the KM JavaScript
-bridge (``window.KeyboardMaestro.GetVariable``); here we just keep that variable
-up to date with a small JSON blob.
+The app polls ``~/.config/new-music-research/progress.json`` a few times a second
+and feeds whatever it finds into the progress HUD (the same ``progress_window.html``
+that the old Keyboard Maestro Custom HTML Prompt used). Driving the window through a
+file — instead of the old ``osascript`` → KM-variable bridge — means the pipeline no
+longer depends on Keyboard Maestro at all: the app spawns the pipeline directly and
+owns the window, so it can be resized and moved between monitors like any native app.
+
+(The module keeps its historical ``km_progress`` name so the two importers —
+``track_playlists.py`` and ``export_to_spotify.py`` — need no changes.)
 
 Design notes
 ------------
-* All failures are swallowed. If the Keyboard Maestro Engine isn't running (e.g.
-  the pipeline is run by hand in a plain terminal), every call is a cheap no-op
-  and the pipeline behaves exactly as before.
-* The JSON is handed to ``osascript`` through an environment variable that
-  AppleScript reads with ``system attribute`` — this sidesteps all shell/AS
-  quoting issues no matter what ends up in playlist names or log lines.
+* All failures are swallowed. If the progress directory can't be written (e.g. the
+  pipeline is run by hand in a plain terminal with no app listening), every call is a
+  cheap best-effort no-op and the pipeline behaves exactly as before.
+* Writes are **atomic** — the JSON is written to a sibling ``.tmp`` file and then
+  ``os.replace``-d into place — so the polling app never observes a half-written file.
 * High-frequency updates (the per-scroll scan counter) are throttled; structural
   updates (phase / overall / log / done) are pushed immediately.
 """
 
 import json
 import os
-import subprocess
 import time
+from pathlib import Path
 
-VAR = "NMRProgress"
+# The single source of truth the standalone app polls. Sits alongside the Tidal
+# session token in the project's existing ~/.config/new-music-research/ dir.
+PROGRESS_FILE = Path.home() / ".config" / "new-music-research" / "progress.json"
+
 _MIN_INTERVAL = 0.35  # seconds between throttled pushes
 
 _state = {
@@ -54,27 +62,16 @@ def _push(force: bool = False) -> None:
         return
     _last_push = now
     _state["ts"] = time.time()
-    env = dict(os.environ)
-    # ensure_ascii=True escapes every non-ASCII char as \uXXXX. The payload then
-    # travels through the NMR_PAYLOAD env var as pure ASCII, so AppleScript's
-    # `system attribute` (which decodes the bytes as Mac Roman) can't mangle it.
-    # The browser's JSON.parse restores the real glyphs — em dashes, middle dots,
-    # accented playlist names — exactly.
-    env["NMR_PAYLOAD"] = json.dumps(_state)
     try:
-        subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'tell application "Keyboard Maestro Engine" to setvariable '
-                '"' + VAR + '" to (system attribute "NMR_PAYLOAD")',
-            ],
-            env=env,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        )
+        PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PROGRESS_FILE.with_name(PROGRESS_FILE.name + ".tmp")
+        # ensure_ascii=False keeps real glyphs (em dashes, middle dots, accented
+        # playlist names) in the UTF-8 file; the app reads it as UTF-8 and JSON.parse
+        # restores them exactly. (The old ASCII-escaping dance was only needed for the
+        # osascript / Mac-Roman bridge, which is gone.)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_state, f, ensure_ascii=False)
+        os.replace(tmp, PROGRESS_FILE)
     except Exception:
         pass
 
@@ -86,23 +83,12 @@ def reset() -> None:
 
 
 def hydrate() -> None:
-    """Pull the live KM variable into this process's state so a *child* process
+    """Pull the live progress file into this process's state so a *child* process
     (the Spotify exporter) can keep driving the same HUD — preserving the log,
     stats and phase accumulated by the parent instead of resetting them. A no-op
-    when the KM Engine isn't running (e.g. the exporter is run by hand)."""
+    when there's nothing to read (e.g. the exporter is run by hand)."""
     try:
-        out = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'tell application "Keyboard Maestro Engine" to getvariable "' + VAR + '"',
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        raw = (out.stdout or "").strip()
+        raw = PROGRESS_FILE.read_text(encoding="utf-8").strip()
         if raw:
             data = json.loads(raw)
             if isinstance(data, dict):

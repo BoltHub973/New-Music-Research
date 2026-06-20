@@ -129,7 +129,7 @@
   .stat .l{font-family:'JetBrains Mono',monospace; font-size:.72rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase;}
 
   /* done overlay */
-  .done-card{margin-top:22px; border:1px solid rgba(0,255,136,.4); border-radius:18px; padding:22px 26px;
+  .done-card{flex:0 0 auto; margin-top:22px; border:1px solid rgba(0,255,136,.4); border-radius:18px; padding:22px 26px;
     background:rgba(0,255,136,.05); box-shadow:0 0 30px rgba(0,255,136,.12); display:none;}
   .done-card.show{display:block; animation:rise .5s ease-out both;}
   .done-card.fail{border-color:rgba(255,51,102,.45); background:rgba(255,51,102,.06); box-shadow:0 0 30px rgba(255,51,102,.14);}
@@ -154,6 +154,16 @@
   .panel.busy-mode > .current,
   .panel.busy-mode > .stats,
   .panel.busy-mode > .log{display:none !important;}
+
+  /* results-mode — once the run completes, the live progress widgets give way to
+     the scraped-vs-missed columns + a slim footer, so the page lays out cleanly at
+     any window size instead of overlapping (the old KM prompt was always fullscreen). */
+  .panel.results-mode > .row,
+  .panel.results-mode > .bar,
+  .panel.results-mode > .current,
+  .panel.results-mode > .stats,
+  .panel.results-mode > .log,
+  .panel.results-mode > .busy-card{display:none !important;}
   .busy-ring{width:86px; height:86px; border-radius:50%;
     border:3px solid rgba(0,240,255,.14); border-top-color:var(--cyan);
     box-shadow:0 0 30px var(--cyan-glow); animation:rotate 1s linear infinite;}
@@ -209,6 +219,24 @@
   @keyframes slide{0%{left:-40%;}100%{left:100%;}}
   @keyframes rise{from{opacity:0; transform:translateY(14px);}to{opacity:1; transform:translateY(0);}}
   @keyframes rotate{to{transform:rotate(360deg);}}
+
+  /* Responsive: reclaim the generous fullscreen padding on shorter/narrower windows
+     (the app is freely resizable; the old KM prompt was always fullscreen). */
+  @media (max-height: 880px), (max-width: 1180px){
+    .wrap{padding:30px 54px 30px;}
+    .phases{margin:26px 0 22px;}
+    .panel{padding:26px 34px;}
+    .title{font-size:1.9rem;}
+  }
+  @media (max-height: 720px){
+    .wrap{padding:20px 44px 22px;}
+    .phases{margin:16px 0 14px; gap:14px;}
+    .phase{padding:14px 18px;}
+    .title{font-size:1.55rem;}
+    .pct{font-size:2.2rem;}
+    .result-col{padding:16px 20px;}
+    .result-col .count{font-size:1.9rem; margin:6px 0 10px;}
+  }
 </style>
 </head>
 <body data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
@@ -351,9 +379,9 @@
       els.missedCount.textContent = missed.length;
       renderTracks(els.scrapedList, scraped);
       renderTracks(els.missedList, missed);
-      // Swap the live activity feed out for the results page.
-      if(els.current) els.current.style.display = 'none';
-      if(els.logBox) els.logBox.style.display = 'none';
+      // Swap the live progress widgets out for the results page (results-mode hides
+      // the overall row/bar/stats/log so the columns + footer never overlap).
+      els.panel.classList.add('results-mode');
       els.results.classList.add('show');
       if(s.spotifyUri){
         els.openBtn.style.display = '';

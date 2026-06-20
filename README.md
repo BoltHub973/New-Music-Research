@@ -12,6 +12,10 @@ python3 track_playlists.py
 
 That's it. The script handles everything automatically from start to finish.
 
+Prefer a window over a terminal? Build the standalone **[New Music Research](app/)**
+macOS app (`cd app && ./build.sh`). Launching it runs the whole pipeline and shows the
+live progress HUD in a real, resizable window — no Keyboard Maestro required.
+
 ---
 
 ## ✅ What to Expect

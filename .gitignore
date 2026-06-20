@@ -16,3 +16,6 @@ antigravity_implementation_plan.md
 .cache
 .cache-*
 generated-artwork/
+
+# Swift build artifacts (standalone macOS app)
+app/.build/
