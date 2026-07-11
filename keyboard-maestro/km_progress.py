@@ -35,6 +35,7 @@ PROGRESS_FILE = Path.home() / ".config" / "new-music-research" / "progress.json"
 _MIN_INTERVAL = 0.35  # seconds between throttled pushes
 
 _state = {
+    "mode": "this-week",   # which scrape window this run covers — drives the HUD subtitle
     "phase": 0,
     "phaseTotal": 3,
     "phaseLabel": "INITIALIZING",
@@ -43,6 +44,8 @@ _state = {
     "log": [],
     "stats": {},
     "tracks": {"scraped": [], "missed": []},
+    "kmMacros": [],   # names of Keyboard Maestro macros fired during/after the run
+    "kmNote": "",     # shown instead when an outcome fires no macros at all
     "done": False,
     "ok": True,
     "message": "",
@@ -77,8 +80,11 @@ def _push(force: bool = False) -> None:
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
-def reset() -> None:
-    """Push the current (initial) state so the window has something at once."""
+def reset(mode: str = None) -> None:
+    """Push the current (initial) state so the window has something at once.
+    `mode` stamps which scrape window this run covers ("this-week"/"last-week")."""
+    if mode:
+        _state["mode"] = mode
     _push(force=True)
 
 
@@ -168,6 +174,23 @@ def busy(label: str, detail: str = "") -> None:
 def results(scraped=None, missed=None) -> None:
     """Stash the scraped + missed track lists for the completion results page."""
     _state["tracks"] = {"scraped": _slim(scraped), "missed": _slim(missed)}
+    _push(force=True)
+
+
+def macro_fired(label: str) -> None:
+    """Record that a Keyboard Maestro macro was fired so the HUD can show it
+    (the results page lists every firing under the completion message)."""
+    _state.setdefault("kmMacros", []).append(label)
+    _push(force=True)
+
+
+def no_macros_fired(reason: str = "") -> None:
+    """Note on the completion card that this outcome fires no KM macros
+    (failed / empty / aborted runs end quietly by design)."""
+    note = "No Keyboard Maestro macros were fired"
+    if reason:
+        note += f" — {reason}"
+    _state["kmNote"] = note
     _push(force=True)
 
 

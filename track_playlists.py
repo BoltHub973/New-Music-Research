@@ -1,4 +1,5 @@
 import bootstrap
+import argparse
 import csv
 import json
 import os
@@ -15,12 +16,42 @@ import km_progress as km
 from dotenv import load_dotenv
 import tidalapi
 
-load_dotenv()
+# Load .env explicitly from the working directory (the project/data dir) — a bare
+# load_dotenv() searches upward from this script's dir, i.e. the app bundle when
+# running the bundled copy.
+load_dotenv(os.path.join(os.getcwd(), ".env"))
 
 # A track counts as "recent" if it was added to the playlist within this many days.
 # (The old web scraper matched the UI's "today / yesterday / this week" buckets;
 # the API gives real timestamps, so this is now an exact rolling window.)
 RECENT_DAYS = 7
+
+
+def scrape_window(mode):
+    """Return (start, end, description) for the given scrape mode.
+
+    start/end are tz-aware UTC datetimes compared against Tidal's date_added;
+    end=None means "up to now".
+
+      this-week  — the rolling last-RECENT_DAYS window (today + this week,
+                   the pipeline's historical behavior).
+      last-week  — the previous calendar week, Monday 00:00 → Monday 00:00
+                   local time (the rows Tidal's playlist page labels
+                   "Last week").
+    """
+    now_local = datetime.datetime.now().astimezone()
+    if mode == "last-week":
+        this_monday = (now_local - datetime.timedelta(days=now_local.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        prev_monday = this_monday - datetime.timedelta(days=7)
+        desc = (f"added last week ({prev_monday.strftime('%b %d')} – "
+                f"{(this_monday - datetime.timedelta(days=1)).strftime('%b %d')})")
+        return (prev_monday.astimezone(datetime.timezone.utc),
+                this_monday.astimezone(datetime.timezone.utc),
+                desc)
+    cutoff = now_local - datetime.timedelta(days=RECENT_DAYS)
+    return (cutoff.astimezone(datetime.timezone.utc), None,
+            f"added in the last {RECENT_DAYS} days")
 
 # OAuth session token for the Tidal API, created once by `python3 tidal_login.py`
 # and refreshed automatically on every run. Lives outside the repo on purpose.
@@ -35,14 +66,20 @@ output_file = os.path.join("scraped-files", f"SCRAPED {current_time}.csv")
 
 def trigger_km_macro(uuid):
     """Triggers a Keyboard Maestro macro by its UUID using osascript."""
+    # Human-readable label for the HUD; the app passes the macro's name in
+    # KM_MACRO_NAME alongside the UUID (falls back to the raw UUID).
+    label = os.getenv("KM_MACRO_NAME") or uuid
     script = f'tell application "Keyboard Maestro Engine" to do script "{uuid}"'
     try:
         # Silence osascript's stdout — `do script` echoes "missing value", which
         # would otherwise leak into our redirected stdout (the SPOTIFY_URI file).
         subprocess.run(["osascript", "-e", script], check=True, stdout=subprocess.DEVNULL)
         ui.ok(f"Triggered Keyboard Maestro macro {uuid}")
+        km.log(f"Keyboard Maestro → {label}")
+        km.macro_fired(label)
     except subprocess.CalledProcessError as e:
         ui.err(f"Failed to trigger KM macro: {e}")
+        km.log(f"Keyboard Maestro macro failed to fire: {label}")
 
 def open_spotify_playlist(uri):
     """Open a spotify: URI in the Spotify desktop app. Best-effort, never fatal.
@@ -106,8 +143,11 @@ def tidal_session():
         ui.err(f"Tidal login failed: {e}")
     return None
 
-def fetch_playlist(session, playlist, progress, overall):
+def fetch_playlist(session, playlist, progress, overall, window):
     """Fetch one playlist via the Tidal API, narrating live progress under `progress`.
+
+    `window` is the (start, end) pair from scrape_window(); a track counts when
+    start <= date_added < end (end=None → no upper bound).
 
     A transient sub-task shows the running scanned/recent counts; on completion
     it's removed and replaced by a persistent summary line, then the `overall`
@@ -122,7 +162,7 @@ def fetch_playlist(session, playlist, progress, overall):
         pl = session.playlist(playlist_uuid)
         progress.update(sub, total=pl.num_tracks or None)
 
-        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=RECENT_DAYS)
+        win_start, win_end = window
         tracks_data = []
         scanned = 0
         offset = 0
@@ -132,7 +172,8 @@ def fetch_playlist(session, playlist, progress, overall):
                 break
             for t in batch:
                 scanned += 1
-                if t.date_added and t.date_added >= cutoff:
+                if (t.date_added and t.date_added >= win_start
+                        and (win_end is None or t.date_added < win_end)):
                     artists = ", ".join(a.name for a in (t.artists or []) if a.name)
                     tracks_data.append({
                         "Title": t.name or "Unknown Title",
@@ -174,24 +215,36 @@ def fetch_playlist(session, playlist, progress, overall):
         return []
 
 def main():
+    parser = argparse.ArgumentParser(description="Scrape Tidal playlists → Spotify playlist.")
+    parser.add_argument("--mode", choices=("this-week", "last-week"), default="this-week",
+                        help="Date-added window to scrape (this-week = rolling 7 days, "
+                             "last-week = previous calendar week)")
+    args = parser.parse_args()
+    window_start, window_end, window_desc = scrape_window(args.mode)
+
     ui.banner()
-    km.reset()
+    km.reset(mode=args.mode)
 
     playlists = load_playlists()
     if not playlists:
+        km.no_macros_fired("the run aborted")
         km.finish(ok=False, message="playlists.json not found or empty")
         return
 
     all_tracks = []
+    playlist_created = False   # gates the end-of-run KM macro
 
     # ── PHASE 1 — Scrape Tidal (via the official API, not the website) ──────
     ui.phase(1, 3, "SCRAPE TIDAL")
     km.phase(1, 3, "SCRAPE TIDAL")
     km.overall(0, len(playlists), "Scanning playlists")
     ui.step(f"Connecting to the Tidal API for {len(playlists)} playlists")
+    ui.info(f"Window: tracks {window_desc}")
+    km.log(f"Scraping tracks {window_desc}")
 
     session = tidal_session()
     if not session:
+        km.no_macros_fired("the run aborted")
         km.finish(ok=False, message="Tidal login required — run `python3 tidal_login.py`")
         return
 
@@ -202,7 +255,8 @@ def main():
             detail="",
         )
         for idx, playlist in enumerate(playlists):
-            tracks = fetch_playlist(session, playlist, progress, overall)
+            tracks = fetch_playlist(session, playlist, progress, overall,
+                                    (window_start, window_end))
             all_tracks.extend(tracks)
             km.overall(idx + 1, len(playlists))
 
@@ -252,8 +306,12 @@ def main():
             # stdout carries only machine-readable data lines — SPOTIFY_URI: and
             # MISSED_FILE: — which we capture so we can open the playlist and
             # build the results page.
+            # The exporter lives next to this script (which may be the copy bundled
+            # inside the app), NOT in the cwd — the cwd is the project/data dir.
+            exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "export_to_spotify.py")
             result = subprocess.run(
-                [sys.executable, "export_to_spotify.py", output_file],
+                [sys.executable, exporter, output_file, "--mode", args.mode],
                 check=True,
                 stdout=subprocess.PIPE,
                 text=True,
@@ -270,6 +328,7 @@ def main():
             # Preserve the data contract for any AppleScript launcher watching
             # *our* stdout (e.g. the `do shell script` recipe in the README).
             if spotify_uri:
+                playlist_created = True
                 print(f"SPOTIFY_URI:{spotify_uri}")
                 sys.stdout.flush()  # keep the stdout data contract intact for any launcher watching it
 
@@ -297,17 +356,22 @@ def main():
             km.finish(ok=False, message="An error occurred during export")
 
     else:
-        ui.warn(f"No matching tracks found (added in the last {RECENT_DAYS} days).")
-        km.finish(ok=True, message=f"No new tracks found (added in the last {RECENT_DAYS} days)")
+        ui.warn(f"No matching tracks found ({window_desc}).")
+        km.finish(ok=True, message=f"No new tracks found ({window_desc})")
         # Create empty CSV with headers just in case
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             dict_writer = csv.DictWriter(f, fieldnames=keys)
             dict_writer.writeheader()
         ui.info(f"Created empty snapshot → {output_file}")
 
-    # Trigger Keyboard Maestro macro (optional — only runs if KM_MACRO_UUID is set in .env)
+    # Fire the "Open Results" KM macro — but ONLY when a playlist was actually
+    # created. Failed, empty, and aborted runs end quietly on their HUD card,
+    # with a note there saying no macros were fired.
     km_uuid = os.getenv("KM_MACRO_UUID")
-    if km_uuid:
+    if not playlist_created:
+        ui.info("No playlist created — no Keyboard Maestro macro fired.")
+        km.no_macros_fired("no playlist was created")
+    elif km_uuid:
         trigger_km_macro(km_uuid)
     else:
         ui.info("KM_MACRO_UUID not set — skipping Keyboard Maestro trigger.")

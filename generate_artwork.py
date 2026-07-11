@@ -3,15 +3,18 @@ Dynamic playlist artwork generator.
 
 Renders a 500x500 JPEG cover for the daily Spotify playlist using Playwright +
 HTML/CSS. The artwork is themed as the broadcast slate for a futuristic pirate
-radio show — dark, purple, cinematic — with the playlist's creation date
-stamped vertically in the format:
+radio show — dark, cinematic — with the playlist's creation date stamped
+vertically in the format:
 
     MAY
     22
     26
 
+Two color themes: "violet" (the classic this-week purple) and "orange"
+(last-week scrapes — same slate, orange background).
+
 Public API:
-    generate_artwork(date: datetime.datetime, output_path: str) -> str
+    generate_artwork(date: datetime.datetime, output_path: str, theme: str = "violet") -> str
 """
 
 import bootstrap  # noqa: F401  (ensures playwright is installed)
@@ -23,9 +26,48 @@ from playwright.sync_api import sync_playwright
 
 ARTWORK_SIZE = 500
 
+# Every color the slate uses, keyed by role. rgb keys are bare "r,g,b" triplets
+# (composed with per-use alphas as rgba(...)); the rest are hex.
+THEMES = {
+    "violet": {
+        "text": "#f4f0ff",
+        "bg0": "#06030f", "bg1": "#140828", "bg2": "#1c0a3a", "bg3": "#08030f",
+        "a300": "216,180,254",   # glow tint on stars
+        "a400": "192,132,252",   # bright accent (rings, vinyl, tower edge glow)
+        "a500": "168,85,247",    # mid accent
+        "a500b": "139,92,246",   # center haze
+        "a600": "124,58,237",    # deep accent
+        "a800": "91,33,182",     # horizon wash
+        "a900": "76,29,149",     # darkest wash
+        "glitch_dark": "20,5,40",
+        "tower_hi": "#c084fc", "tower_lo": "#7c3aed",
+        "tower_g1": "#1a0830", "tower_g2": "#0a0420",
+        "tip": "#f0abfc",
+        # feColorMatrix RGB rows for the grain overlay's tint
+        "noise_matrix": "0 0 0 0 0.55  0 0 0 0 0.35  0 0 0 0 0.95  0 0 0 0.9 0",
+    },
+    "orange": {
+        "text": "#fff6ef",
+        "bg0": "#0f0602", "bg1": "#281106", "bg2": "#3a1a08", "bg3": "#0f0702",
+        "a300": "253,186,116",
+        "a400": "251,146,60",
+        "a500": "249,115,22",
+        "a500b": "246,139,92",
+        "a600": "234,88,12",
+        "a800": "154,52,18",
+        "a900": "124,45,18",
+        "glitch_dark": "40,15,4",
+        "tower_hi": "#fb923c", "tower_lo": "#ea580c",
+        "tower_g1": "#30140a", "tower_g2": "#200a04",
+        "tip": "#fed7aa",
+        "noise_matrix": "0 0 0 0 0.95  0 0 0 0 0.55  0 0 0 0 0.15  0 0 0 0.9 0",
+    },
+}
 
-def _build_html(date: datetime.datetime) -> str:
+
+def _build_html(date: datetime.datetime, theme: str = "violet") -> str:
     """Return the full HTML document for the artwork at the given date."""
+    p = THEMES[theme]
     month = date.strftime("%b").upper()       # e.g. "MAY"
     day = date.strftime("%d").lstrip("0") or "0"  # e.g. "22"
     year = date.strftime("%y")                 # e.g. "26"
@@ -45,7 +87,7 @@ def _build_html(date: datetime.datetime) -> str:
             f'width:{size}px;height:{size}px;opacity:{opacity:.2f};"></div>'
         )
 
-    # Glitch / pixel artifact rectangles in the corners (purple data-corruption)
+    # Glitch / pixel artifact rectangles in the corners (data-corruption accents)
     glitches = []
     for _ in range(22):
         # cluster near the four corners
@@ -61,11 +103,11 @@ def _build_html(date: datetime.datetime) -> str:
         w = rng.choice([6, 8, 10, 14, 18, 24])
         h = rng.choice([2, 3, 4, 6, 8])
         shade = rng.choice([
-            "rgba(124,58,237,0.55)",
-            "rgba(168,85,247,0.45)",
-            "rgba(76,29,149,0.7)",
-            "rgba(192,132,252,0.35)",
-            "rgba(20,5,40,0.85)",
+            f"rgba({p['a600']},0.55)",
+            f"rgba({p['a500']},0.45)",
+            f"rgba({p['a900']},0.7)",
+            f"rgba({p['a400']},0.35)",
+            f"rgba({p['glitch_dark']},0.85)",
         ])
         glitches.append(
             f'<div class="glitch" style="left:{x:.2f}%;top:{y:.2f}%;'
@@ -97,13 +139,13 @@ def _build_html(date: datetime.datetime) -> str:
     height: {ARTWORK_SIZE}px;
     overflow: hidden;
     font-family: 'JetBrains Mono', monospace;
-    color: #f4f0ff;
+    color: {p['text']};
     background:
-      radial-gradient(ellipse 60% 45% at 50% 55%, rgba(139,92,246,0.45) 0%, rgba(76,29,149,0.25) 35%, transparent 70%),
-      radial-gradient(ellipse 90% 60% at 50% 100%, rgba(91,33,182,0.55) 0%, transparent 60%),
-      radial-gradient(ellipse 40% 30% at 20% 15%, rgba(124,58,237,0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 35% 25% at 85% 20%, rgba(168,85,247,0.18) 0%, transparent 60%),
-      linear-gradient(180deg, #06030f 0%, #140828 45%, #1c0a3a 70%, #08030f 100%);
+      radial-gradient(ellipse 60% 45% at 50% 55%, rgba({p['a500b']},0.45) 0%, rgba({p['a900']},0.25) 35%, transparent 70%),
+      radial-gradient(ellipse 90% 60% at 50% 100%, rgba({p['a800']},0.55) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 20% 15%, rgba({p['a600']},0.25) 0%, transparent 60%),
+      radial-gradient(ellipse 35% 25% at 85% 20%, rgba({p['a500']},0.18) 0%, transparent 60%),
+      linear-gradient(180deg, {p['bg0']} 0%, {p['bg1']} 45%, {p['bg2']} 70%, {p['bg3']} 100%);
   }}
 
   /* Subtle vignette tightens the frame */
@@ -119,7 +161,7 @@ def _build_html(date: datetime.datetime) -> str:
     position: absolute; inset: 0;
     opacity: 0.12;
     mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.35  0 0 0 0 0.95  0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='{p['noise_matrix']}'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 50;
   }}
@@ -144,7 +186,7 @@ def _build_html(date: datetime.datetime) -> str:
     position: absolute;
     background: #fff;
     border-radius: 50%;
-    box-shadow: 0 0 6px rgba(255,255,255,0.85), 0 0 12px rgba(216,180,254,0.5);
+    box-shadow: 0 0 6px rgba(255,255,255,0.85), 0 0 12px rgba({p['a300']},0.5);
     z-index: 3;
   }}
 
@@ -163,15 +205,15 @@ def _build_html(date: datetime.datetime) -> str:
     background:
       radial-gradient(circle at 50% 50%,
         transparent 0%, transparent 6%,
-        rgba(192,132,252,0.55) 6.4%, rgba(192,132,252,0.55) 6.8%, transparent 7.2%,
+        rgba({p['a400']},0.55) 6.4%, rgba({p['a400']},0.55) 6.8%, transparent 7.2%,
         transparent 13%,
-        rgba(192,132,252,0.42) 13.4%, rgba(192,132,252,0.42) 13.8%, transparent 14.2%,
+        rgba({p['a400']},0.42) 13.4%, rgba({p['a400']},0.42) 13.8%, transparent 14.2%,
         transparent 21%,
-        rgba(168,85,247,0.32) 21.4%, rgba(168,85,247,0.32) 21.8%, transparent 22.2%,
+        rgba({p['a500']},0.32) 21.4%, rgba({p['a500']},0.32) 21.8%, transparent 22.2%,
         transparent 30%,
-        rgba(168,85,247,0.22) 30.4%, rgba(168,85,247,0.22) 30.8%, transparent 31.2%,
+        rgba({p['a500']},0.22) 30.4%, rgba({p['a500']},0.22) 30.8%, transparent 31.2%,
         transparent 40%,
-        rgba(168,85,247,0.14) 40.4%, rgba(168,85,247,0.14) 40.8%, transparent 41.2%,
+        rgba({p['a500']},0.14) 40.4%, rgba({p['a500']},0.14) 40.8%, transparent 41.2%,
         transparent 100%
       );
     z-index: 5;
@@ -186,7 +228,7 @@ def _build_html(date: datetime.datetime) -> str:
     transform: translate(-50%, -50%);
     width: 280px; height: 280px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(192,132,252,0.4) 0%, rgba(124,58,237,0.18) 35%, transparent 70%);
+    background: radial-gradient(circle, rgba({p['a400']},0.4) 0%, rgba({p['a600']},0.18) 35%, transparent 70%);
     z-index: 4;
     filter: blur(8px);
   }}
@@ -201,17 +243,17 @@ def _build_html(date: datetime.datetime) -> str:
     border-radius: 50%;
     background:
       radial-gradient(ellipse at center,
-        rgba(192,132,252,0.55) 0%,
-        rgba(124,58,237,0.45) 15%,
+        rgba({p['a400']},0.55) 0%,
+        rgba({p['a600']},0.45) 15%,
         transparent 18%,
         transparent 24%,
-        rgba(168,85,247,0.30) 26%,
+        rgba({p['a500']},0.30) 26%,
         transparent 30%,
         transparent 38%,
-        rgba(168,85,247,0.20) 40%,
+        rgba({p['a500']},0.20) 40%,
         transparent 44%,
         transparent 56%,
-        rgba(168,85,247,0.12) 58%,
+        rgba({p['a500']},0.12) 58%,
         transparent 62%,
         transparent 100%
       );
@@ -229,7 +271,7 @@ def _build_html(date: datetime.datetime) -> str:
     height: 360px;
     z-index: 6;
     opacity: 1;
-    filter: drop-shadow(0 0 12px rgba(192,132,252,0.6));
+    filter: drop-shadow(0 0 12px rgba({p['a400']},0.6));
   }}
   .tower svg {{ width: 100%; height: 100%; display: block; }}
 
@@ -248,8 +290,8 @@ def _build_html(date: datetime.datetime) -> str:
     text-align: center;
     text-shadow:
       0 0 2px rgba(255,255,255,0.95),
-      0 0 22px rgba(192,132,252,0.7),
-      0 0 48px rgba(124,58,237,0.55);
+      0 0 22px rgba({p['a400']},0.7),
+      0 0 48px rgba({p['a600']},0.55);
   }}
   .date .line {{
     display: block;
@@ -276,17 +318,17 @@ def _build_html(date: datetime.datetime) -> str:
       <svg viewBox="0 0 80 320" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
         <defs>
           <linearGradient id="towerGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#1a0830" stop-opacity="0.95"/>
-            <stop offset="100%" stop-color="#0a0420" stop-opacity="0.98"/>
+            <stop offset="0%" stop-color="{p['tower_g1']}" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="{p['tower_g2']}" stop-opacity="0.98"/>
           </linearGradient>
           <linearGradient id="towerEdge" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#c084fc" stop-opacity="0.95"/>
-            <stop offset="100%" stop-color="#7c3aed" stop-opacity="0.4"/>
+            <stop offset="0%" stop-color="{p['tower_hi']}" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="{p['tower_lo']}" stop-opacity="0.4"/>
           </linearGradient>
         </defs>
         <!-- antenna mast -->
         <line x1="40" y1="0" x2="40" y2="40" stroke="url(#towerEdge)" stroke-width="1.4"/>
-        <circle cx="40" cy="0" r="2.4" fill="#f0abfc"/>
+        <circle cx="40" cy="0" r="2.4" fill="{p['tip']}"/>
         <!-- tower body (silhouette + lattice) -->
         <polygon points="40,40 18,320 62,320" fill="url(#towerGrad)" stroke="url(#towerEdge)" stroke-width="0.9"/>
         <!-- horizontal cross-braces -->
@@ -326,12 +368,13 @@ def _build_html(date: datetime.datetime) -> str:
 """
 
 
-def generate_artwork(date: datetime.datetime, output_path: str) -> str:
+def generate_artwork(date: datetime.datetime, output_path: str, theme: str = "violet") -> str:
     """Render the playlist artwork for `date` to `output_path` (JPEG).
 
+    `theme` picks the palette: "violet" (this-week) or "orange" (last-week).
     Returns the absolute path of the file written.
     """
-    html = _build_html(date)
+    html = _build_html(date, theme)
     output_path = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
@@ -359,14 +402,17 @@ def generate_artwork(date: datetime.datetime, output_path: str) -> str:
 
 if __name__ == "__main__":
     # Allow running this file directly to preview the artwork for any date.
-    # Usage:  python3 generate_artwork.py                 -> uses today
-    #         python3 generate_artwork.py 2026-05-22      -> uses that date
+    # Usage:  python3 generate_artwork.py                        -> today, violet
+    #         python3 generate_artwork.py 2026-05-22             -> that date
+    #         python3 generate_artwork.py 2026-05-22 orange      -> orange theme
     import sys
     if len(sys.argv) > 1:
         d = datetime.datetime.strptime(sys.argv[1], "%Y-%m-%d")
     else:
         d = datetime.datetime.now()
+    theme = sys.argv[2] if len(sys.argv) > 2 else "violet"
 
-    out = os.path.join("generated-artwork", f"preview_{d.strftime('%m-%d-%y')}.jpg")
-    path = generate_artwork(d, out)
+    out = os.path.join("generated-artwork",
+                       f"preview_{d.strftime('%m-%d-%y')}_{theme}.jpg")
+    path = generate_artwork(d, out, theme)
     print(f"Wrote {path}")

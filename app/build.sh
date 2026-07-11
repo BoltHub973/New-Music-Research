@@ -64,6 +64,18 @@ fi
 # 4. Bundle the HUD (single source of truth lives in keyboard-maestro/).
 cp "${REPO_ROOT}/keyboard-maestro/progress_window.html" "${APP_PATH}/Contents/Resources/progress_window.html"
 
+# 4b. Bundle the Python pipeline — the app runs this copy, so the installed app is
+# always self-consistent no matter what any checkout currently contains. Only code
+# and static assets ship in the bundle; mutable state (.env, token caches, scraped
+# CSVs, playlists.json) stays in the project/data dir the pipeline runs *in*.
+PIPELINE_DST="${APP_PATH}/Contents/Resources/pipeline"
+mkdir -p "${PIPELINE_DST}/keyboard-maestro"
+for f in bootstrap.py ui.py track_playlists.py export_to_spotify.py \
+         generate_artwork.py tidal_login.py launch_check.py Playlist-Artwork.jpg; do
+    cp "${REPO_ROOT}/${f}" "${PIPELINE_DST}/"
+done
+cp "${REPO_ROOT}/keyboard-maestro/km_progress.py" "${PIPELINE_DST}/keyboard-maestro/"
+
 # 5. Icon, if present.
 [ -f "Resources/AppIcon.icns" ] && cp "Resources/AppIcon.icns" "${APP_PATH}/Contents/Resources/AppIcon.icns"
 

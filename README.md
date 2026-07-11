@@ -7,10 +7,14 @@ Collects new tracks from curated Tidal playlists (via the Tidal API) and exports
 ## ▶️ How to Run
 
 ```bash
-python3 track_playlists.py
+python3 track_playlists.py                    # this week (rolling 7 days) — the default
+python3 track_playlists.py --mode last-week   # previous calendar week (Mon → Sun)
 ```
 
 That's it. The script handles everything automatically from start to finish.
+`--mode last-week` publishes an orange-themed `🟠 DX LAST WEEK <date>` playlist instead
+of the usual purple `🪁 DX <date>`. In the app these live under the **Scrape** menu
+(⌘1 This Week / ⌘2 Last Week).
 
 Prefer a window over a terminal? Build the standalone **[New Music Research](app/)**
 macOS app (`cd app && ./build.sh`). Launching it runs the whole pipeline and shows the
@@ -30,7 +34,7 @@ live progress HUD in a real, resizable window — no Keyboard Maestro required.
    ```
    🪁 DX 02-20-26
    ```
-   A **custom 500×500 cover** is generated on the fly and uploaded — a dark, purple, futuristic "pirate radio broadcast" slate with the playlist's creation date stamped vertically (`MAY` / `22` / `26`). The generated JPEG is also saved to `generated-artwork/` as a historical record.
+   A **custom 500×500 cover** is generated on the fly and uploaded — a dark, futuristic "pirate radio broadcast" slate with the playlist's creation date stamped vertically (`MAY` / `22` / `26`). This-week runs render it purple; `--mode last-week` renders the same slate on an orange background. The generated JPEG is also saved to `generated-artwork/` as a historical record.
 4. **All found tracks are added** to that playlist automatically using a 3-step search strategy:
    - **Strategy 1**: Title + Artist + Album (most precise)
    - **Strategy 2**: Title + Artist only

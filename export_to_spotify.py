@@ -1,4 +1,5 @@
 import bootstrap
+import argparse
 import base64
 import csv
 import glob
@@ -7,9 +8,10 @@ import sys
 import datetime
 import time
 import subprocess
+import requests
 import spotipy
 import ui
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 from dotenv import load_dotenv
 
 # Keyboard Maestro progress bridge lives in keyboard-maestro/ (a hyphenated,
@@ -18,15 +20,40 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "keyboard-maestro"))
 import km_progress as km
 
-# Load environment variables from .env file
-load_dotenv()
+# Load .env explicitly from the working directory (the project/data dir).
+# A bare load_dotenv() searches upward from this *script's* directory — which is
+# the app bundle when running the bundled copy, where no .env exists.
+load_dotenv(os.path.join(os.getcwd(), ".env"))
 
 # Configuration
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-REDIRECT_URI = "http://127.0.0.1:8888/callback"
-SCOPE = "playlist-modify-public playlist-modify-private ugc-image-upload"
+# Port 8899 on purpose: Adrian's Spotify-Playlists-Dashboard app owns 8888, and
+# the consent flow's temporary local server must be able to bind this port.
+# The same URI must be registered in the Spotify Developer Dashboard.
+REDIRECT_URI = "http://127.0.0.1:8899/callback"
+# NOTE: adding a scope invalidates the cached token — the next run opens the
+# browser once for re-consent. playlist-read-private lets the launch check see
+# our private playlists; user-library-modify covers DELETE /me/library.
+SCOPE = ("playlist-read-private playlist-modify-public playlist-modify-private "
+         "ugc-image-upload user-library-modify")
 ARTWORK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Playlist-Artwork.jpg")
+
+# Token cache lives in the working directory — the project/data dir, where it has
+# always been. Explicitly NOT script-relative: the running copy of this script may
+# be the one bundled inside the app, and the bundle is wiped on every rebuild.
+CACHE_PATH = os.path.join(os.getcwd(), ".cache")
+
+# Spotipy's default read timeout is 5s — the ugc-image-upload endpoint routinely
+# blows past that, which is how a playlist once ended up created-but-empty.
+REQUEST_TIMEOUT = 30
+MAX_NETWORK_RETRIES = 4
+
+# How each scrape mode brands its playlist: title prefix + artwork theme.
+MODES = {
+    "this-week": {"title": "🪁 DX {date}", "theme": "violet"},
+    "last-week": {"title": "🟠 DX LAST WEEK {date}", "theme": "orange"},
+}
 
 def get_latest_csv():
     """Finds the most recently created SCRAPED csv file."""
@@ -41,6 +68,12 @@ def get_latest_csv():
 def get_credentials():
     """Prompts user for credentials if not found in env."""
     global CLIENT_ID, CLIENT_SECRET
+
+    if (not CLIENT_ID or not CLIENT_SECRET) and not sys.stdin.isatty():
+        # Headless (spawned by the app) — there's nobody to type at a prompt.
+        ui.err("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not set — "
+               f"expected in {os.path.join(os.getcwd(), '.env')}")
+        return False
 
     if not CLIENT_ID:
         ui.warn("Spotify credentials required — find these in your Developer Dashboard.")
@@ -63,9 +96,14 @@ def mac_notify(title, message):
 
 def spotify_call(fn, *args, **kwargs):
     """
-    Calls a Spotify API function, automatically retrying after rate-limit (429) errors.
-    Shows a Mac notification while waiting so you know what's happening.
+    Calls a Spotify API function, automatically retrying:
+      · 429 rate limits — waits out the Retry-After window (with a Mac notification)
+      · transient failures (read timeouts, dropped connections, 5xx) — bounded
+        retries with backoff. A retried write can in theory double-apply if the
+        first request actually landed, but for this pipeline a rare duplicate
+        beats an aborted export (see the created-but-empty playlist of 07-10-26).
     """
+    attempts = 0
     while True:
         try:
             return fn(*args, **kwargs)
@@ -77,8 +115,62 @@ def spotify_call(fn, *args, **kwargs):
                 mac_notify("🪁 DX — Spotify Rate Limit", msg)
                 time.sleep(retry_after)
                 ui.info("Retrying…")
+            elif e.http_status is not None and e.http_status >= 500 and attempts < MAX_NETWORK_RETRIES:
+                attempts += 1
+                wait = 2 * attempts
+                ui.warn(f"Spotify server error {e.http_status} — retrying in {wait}s "
+                        f"({attempts}/{MAX_NETWORK_RETRIES})…")
+                time.sleep(wait)
             else:
                 raise
+        except requests.exceptions.RequestException as e:
+            if attempts >= MAX_NETWORK_RETRIES:
+                raise
+            attempts += 1
+            wait = 2 * attempts
+            ui.warn(f"Network hiccup ({type(e).__name__}) — retrying in {wait}s "
+                    f"({attempts}/{MAX_NETWORK_RETRIES})…")
+            time.sleep(wait)
+
+def build_spotify_client():
+    return spotipy.Spotify(
+        auth_manager=SpotifyOAuth(
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            redirect_uri=REDIRECT_URI,
+            scope=SCOPE,
+            open_browser=True,
+            cache_path=CACHE_PATH,
+        ),
+        requests_timeout=REQUEST_TIMEOUT,
+    )
+
+
+def authenticate():
+    """Return (sp, user_id), transparently recovering from an expired refresh token.
+
+    Spotify refresh tokens expire 6 months after the original authorization
+    (developer.spotify.com blog, 2026-06-18; enforced for existing apps from
+    2026-07-20). The refresh endpoint then returns 400 invalid_grant — per the
+    blog the correct handling is: don't retry, discard the stored token, and
+    send the user back through the sign-in flow (the browser opens once).
+    """
+    try:
+        sp = build_spotify_client()
+        return sp, spotify_call(sp.me)['id']
+    except SpotifyOauthError as e:
+        error_code = getattr(e, "error", "") or ""
+        if "invalid_grant" not in error_code and "invalid_grant" not in str(e).lower():
+            raise
+        ui.warn("Spotify refresh token expired (6-month limit) — re-authorize in the browser…")
+        km.log("Spotify session expired — re-authorizing in browser")
+        try:
+            os.remove(CACHE_PATH)
+        except OSError:
+            pass
+        sp = build_spotify_client()
+        return sp, spotify_call(sp.me)['id']
+
 
 def main():
     # Inherit the live HUD state the pipeline built up (log, stats, phase) so we
@@ -86,37 +178,41 @@ def main():
     km.hydrate()
 
     # 1. basic setup
-    if len(sys.argv) > 1:
-        csv_file = sys.argv[1]
-    else:
+    parser = argparse.ArgumentParser(description="Export a scraped Tidal CSV to a Spotify playlist.")
+    parser.add_argument("csv_file", nargs="?", default=None, help="Scraped CSV (default: latest in scraped-files/)")
+    parser.add_argument("--mode", choices=sorted(MODES), default="this-week",
+                        help="Scrape window the CSV represents — controls playlist title & artwork theme")
+    args = parser.parse_args()
+
+    mode = MODES[args.mode]
+    csv_file = args.csv_file
+    if not csv_file:
         ui.info("Looking for latest scraped CSV…")
         csv_file = get_latest_csv()
 
     if not csv_file:
         ui.err("No CSV file provided or found.")
-        return
+        sys.exit(1)
 
     # 2. Authenticate
     ui.section("AUTHENTICATE SPOTIFY")
     ui.step(f"Source snapshot: [{ui.PRIMARY}]{csv_file}[/]")
     if not get_credentials():
-        return
+        sys.exit(1)
 
     try:
-        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-            redirect_uri=REDIRECT_URI,
-            scope=SCOPE,
-            open_browser=True
-        ))
-        user_id = spotify_call(sp.me)['id']
+        sp, user_id = authenticate()
         ui.ok(f"Authenticated as [{ui.PRIMARY}]{user_id}[/]")
     except Exception as e:
         ui.err(f"Authentication failed: {e}")
-        ui.info("Check your Client ID/Secret and that "
-                "http://127.0.0.1:8888/callback is a Redirect URI in your app settings.")
-        return
+        if "address already in use" in str(e).lower():
+            ui.info(f"Another app is holding the consent port — quit whatever is using "
+                    f"{REDIRECT_URI.split('/callback')[0]} and re-run. (The port is only "
+                    f"needed during the one-time browser consent.)")
+        else:
+            ui.info(f"Check your Client ID/Secret and that {REDIRECT_URI} is a "
+                    f"Redirect URI in your Spotify app settings.")
+        sys.exit(1)
 
     # 3. Read Tracks
     tracks_to_search = []
@@ -127,7 +223,7 @@ def main():
                 tracks_to_search.append(row)
     except Exception as e:
         ui.err(f"Error reading CSV {csv_file}: {e}")
-        return
+        sys.exit(1)
 
     if not tracks_to_search:
         ui.warn("No tracks found in CSV.")
@@ -242,14 +338,18 @@ def main():
             )
             km.overall(idx, n_tracks, "MATCHING ON SPOTIFY", pct=idx / n_tracks * MATCH_WEIGHT)
 
-    # 5. Create Playlist
+    # 5. Create Playlist & add tracks — the critical payload, done FIRST.
+    # (Cover artwork used to come between playlist creation and track adding; a
+    # single timed-out upload aborted the block and published an empty playlist.)
     ui.section("PUBLISH PLAYLIST")
     now = datetime.datetime.now()
     current_date = now.strftime("%m-%d-%y")
     current_timestamp = now.strftime("%m-%d-%y__%I.%M.%S %p")
-    playlist_name = f"🪁 DX {current_date}"
+    playlist_name = mode["title"].format(date=current_date)
     playlist_id = None
     missed_file = None
+    tracks_added = 0
+    publish_error = None
 
     try:
         ui.step(f"Creating playlist [{ui.VIOLET}]{playlist_name}[/]")
@@ -258,47 +358,9 @@ def main():
         playlist = spotify_call(sp.user_playlist_create, user_id, playlist_name, public=False)
         playlist_id = playlist['id']
 
-        # Generate dynamic artwork stamped with the playlist's creation date.
-        # Falls back to the static Playlist-Artwork.jpg if generation ever fails,
-        # so we never publish a playlist without cover art.
-        artwork_to_upload = None
-        try:
-            from generate_artwork import generate_artwork
-            os.makedirs("generated-artwork", exist_ok=True)
-            dynamic_path = os.path.join(
-                "generated-artwork",
-                f"ARTWORK {current_timestamp}.jpg",
-            )
-            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=94)
-            km.current("Rendering cover artwork", "HTML/CSS → Playwright → JPEG", "exporting")
-            with ui.progress() as progress:
-                art_task = progress.add_task(
-                    f"[bold {ui.PRIMARY}]Rendering cover artwork",
-                    total=None, detail="HTML/CSS → Playwright → JPEG",
-                )
-                generate_artwork(now, dynamic_path)
-                progress.update(art_task, total=1, completed=1, detail="done")
-            artwork_to_upload = dynamic_path
-            ui.ok(f"Generated artwork → [{ui.PRIMARY}]{dynamic_path}[/]")
-        except Exception as e:
-            ui.warn(f"Dynamic artwork generation failed: {e}")
-            if os.path.exists(ARTWORK_PATH):
-                artwork_to_upload = ARTWORK_PATH
-                ui.info(f"Falling back to static artwork: {ARTWORK_PATH}")
-
-        if artwork_to_upload and os.path.exists(artwork_to_upload):
-            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=97)
-            km.current("Uploading cover art", "Sending artwork to Spotify", "exporting")
-            with open(artwork_to_upload, 'rb') as img_file:
-                image_b64 = base64.b64encode(img_file.read()).decode('utf-8')
-            spotify_call(sp.playlist_upload_cover_image, playlist_id, image_b64)
-            ui.ok("Cover art uploaded to Spotify")
-        else:
-            ui.warn("No artwork available — skipping cover upload.")
-
         # 6. Add Tracks
         if track_uris:
-            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=99)
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=95)
             km.current("Adding tracks to playlist",
                        f"{len(track_uris)} tracks", "exporting")
             # Add in chunks of 100 as per API limits
@@ -310,8 +372,9 @@ def main():
                 for i in range(0, len(track_uris), 100):
                     chunk = track_uris[i:i+100]
                     spotify_call(sp.playlist_add_items, playlist_id, chunk)
+                    tracks_added += len(chunk)
                     progress.update(add_task, advance=len(chunk))
-            ui.ok(f"Added [bold {ui.PRIMARY}]{len(track_uris)}[/] tracks to "
+            ui.ok(f"Added [bold {ui.PRIMARY}]{tracks_added}[/] tracks to "
                   f"[{ui.VIOLET}]{playlist_name}[/]")
         else:
             ui.warn("No tracks were found on Spotify to add.")
@@ -320,7 +383,49 @@ def main():
         print(f"SPOTIFY_URI:spotify:playlist:{playlist_id}")
 
     except Exception as e:
+        publish_error = e
         ui.err(f"Error creating/filling playlist: {e}")
+
+    # 6b. Cover artwork — cosmetic, so every step is guarded: no artwork problem
+    # may ever fail the export or stop tracks from reaching the playlist.
+    if playlist_id and publish_error is None:
+        artwork_to_upload = None
+        try:
+            from generate_artwork import generate_artwork
+            os.makedirs("generated-artwork", exist_ok=True)
+            dynamic_path = os.path.join(
+                "generated-artwork",
+                f"ARTWORK {current_timestamp}.jpg",
+            )
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=97)
+            km.current("Rendering cover artwork", "HTML/CSS → Playwright → JPEG", "exporting")
+            with ui.progress() as progress:
+                art_task = progress.add_task(
+                    f"[bold {ui.PRIMARY}]Rendering cover artwork",
+                    total=None, detail="HTML/CSS → Playwright → JPEG",
+                )
+                generate_artwork(now, dynamic_path, theme=mode["theme"])
+                progress.update(art_task, total=1, completed=1, detail="done")
+            artwork_to_upload = dynamic_path
+            ui.ok(f"Generated artwork → [{ui.PRIMARY}]{dynamic_path}[/]")
+        except Exception as e:
+            ui.warn(f"Dynamic artwork generation failed: {e}")
+            if os.path.exists(ARTWORK_PATH):
+                artwork_to_upload = ARTWORK_PATH
+                ui.info(f"Falling back to static artwork: {ARTWORK_PATH}")
+
+        try:
+            if artwork_to_upload and os.path.exists(artwork_to_upload):
+                km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=99)
+                km.current("Uploading cover art", "Sending artwork to Spotify", "exporting")
+                with open(artwork_to_upload, 'rb') as img_file:
+                    image_b64 = base64.b64encode(img_file.read()).decode('utf-8')
+                spotify_call(sp.playlist_upload_cover_image, playlist_id, image_b64)
+                ui.ok("Cover art uploaded to Spotify")
+            else:
+                ui.warn("No artwork available — skipping cover upload.")
+        except Exception as e:
+            ui.warn(f"Cover upload failed (playlist keeps its tracks): {e}")
 
     # 7. Save omitted tracks to missed-tracks/
     if omitted:
@@ -339,10 +444,21 @@ def main():
     else:
         ui.ok("All tracks matched successfully — nothing omitted.")
 
-    # 8. Closing summary card
+    # 8. Closing summary card — reports what actually happened, and a publish
+    # failure exits non-zero so the pipeline (and its HUD) reports the failure
+    # instead of celebrating an empty playlist.
+    if publish_error is not None:
+        ui.summary("BROADCAST FAILED", {
+            "Playlist": playlist_name if playlist_id else "— not created —",
+            "Tracks added": f"{tracks_added} of {len(track_uris)}",
+            "Error": str(publish_error),
+            "Snapshot": csv_file,
+        })
+        sys.exit(1)
+
     ui.summary("BROADCAST COMPLETE", {
         "Playlist": playlist_name,
-        "Tracks added": len(track_uris),
+        "Tracks added": tracks_added,
         "Omitted": len(omitted),
         "Snapshot": csv_file,
         "Missed log": missed_file or "—",
