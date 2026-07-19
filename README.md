@@ -40,6 +40,7 @@ window (`./demo.sh`, `./demo.sh fail`, `./demo.sh empty`).
    ```
    scraped-files/SCRAPED 02-20-26__10.15.00 PM.csv
    ```
+   Duplicates across playlists are collapsed to a single row, and tracks are **sorted by how many playlists featured them** (most-featured first) — a track on 5 playlists lands above one on 3. Since the exporter preserves CSV order, the hottest tracks of the week open the Spotify playlist. Each row's `Playlist Count` column records the number of distinct playlists the track appeared on.
 3. **A Spotify playlist is created** — a new private playlist is added to your Spotify account named:
    ```
    🪁 DX 02-20-26

@@ -286,26 +286,49 @@ def main():
     # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
     ui.phase(2, 3, "DEDUPE & SNAPSHOT")
     km.phase(2, 3, "DEDUPE & SNAPSHOT")
-    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art"]
+    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art", "Playlist Count"]
 
     if all_tracks:
         ui.step(f"{len(all_tracks)} recent matches found across all playlists")
         km.current("Dedupe", f"{len(all_tracks)} recent matches found", "working")
 
-        # Remove duplicates based on Artist, Album, Title
+        # Remove duplicates based on Artist, Album, Title — but keep score: the
+        # number of distinct source playlists featuring a track is its A&R
+        # popularity signal, and drives the final Spotify playlist order.
         unique_tracks = []
-        seen_tracks = set()
+        featured_on = {}  # track_key -> set of source playlists
         for track in all_tracks:
             track_key = (track['Artist'], track['Album'], track['Title'])
-            if track_key not in seen_tracks:
-                seen_tracks.add(track_key)
+            if track_key not in featured_on:
+                featured_on[track_key] = set()
                 unique_tracks.append(track)
+            featured_on[track_key].add(track['Source Playlist'])
+
+        for track in unique_tracks:
+            track_key = (track['Artist'], track['Album'], track['Title'])
+            track['Playlist Count'] = len(featured_on[track_key])
+
+        # Most-featured tracks first; the exporter preserves CSV order, so this
+        # is the order of the published playlist. sort() is stable — ties keep
+        # their scrape order.
+        unique_tracks.sort(key=lambda t: t['Playlist Count'], reverse=True)
 
         dupes = len(all_tracks) - len(unique_tracks)
         ui.ok(f"{len(unique_tracks)} unique tracks "
               f"[{ui.MUTED}]({dupes} duplicate{'s' if dupes != 1 else ''} removed)[/]")
         km.stats(recent=len(all_tracks), unique=len(unique_tracks), duplicates=dupes)
         km.log(f"{len(unique_tracks)} unique tracks ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
+
+        multi = [t for t in unique_tracks if t['Playlist Count'] > 1]
+        if multi:
+            top = multi[0]
+            ui.ok(f"Prioritized [bold {ui.PRIMARY}]{len(multi)}[/] multi-playlist "
+                  f"track{'s' if len(multi) != 1 else ''} to the top "
+                  f"[{ui.MUTED}](#1: {top['Title']} — {top['Artist']}, "
+                  f"on {top['Playlist Count']} playlists)[/]")
+            km.log(f"Prioritized {len(multi)} multi-playlist track"
+                   f"{'s' if len(multi) != 1 else ''} — #1: {top['Title']} "
+                   f"({top['Playlist Count']} playlists)")
 
         # Write to CSV
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
