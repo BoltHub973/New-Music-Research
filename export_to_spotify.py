@@ -294,6 +294,10 @@ def main():
             title = track.get('Title', '').strip()
             artist = track.get('Artist', '').strip()
             album = track.get('Album', '').strip()
+            # Tidal album art captured at scrape time (empty on pre-artwork CSVs) —
+            # shown in the HUD's hero panel while the track is being matched.
+            art = (track.get('Art') or '').strip()
+            video = (track.get('Video Art') or '').strip()
 
             if not title or not artist:
                 progress.advance(match_task)
@@ -301,7 +305,8 @@ def main():
                 continue
 
             km.current(f"{title} — {artist}",
-                       f"{len(track_uris)} matched · {len(omitted)} missed", "exporting")
+                       f"{len(track_uris)} matched · {len(omitted)} missed", "exporting",
+                       art=art, video=video)
 
             # Strategy 1: Title + Artist + Album
             res = spotify_call(sp.search, q=f"track:{clean_query(title)} artist:{clean_query(artist)} album:{clean_query(album)}", limit=5, type='track')
@@ -328,7 +333,8 @@ def main():
             else:
                 omitted.append({"Title": title, "Artist": artist, "Album": album,
                                 "Source Playlist": track.get('Source Playlist', ''),
-                                "Date Added": track.get('Date Added', '')})
+                                "Date Added": track.get('Date Added', ''),
+                                "Art": art, "Video Art": video})
                 ui.omitted(f"{title} - {artist}")
 
             progress.update(
@@ -431,7 +437,7 @@ def main():
     if omitted:
         os.makedirs("missed-tracks", exist_ok=True)
         missed_file = os.path.join("missed-tracks", f"MISSED {current_timestamp}.csv")
-        keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
+        keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art"]
         with open(missed_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()

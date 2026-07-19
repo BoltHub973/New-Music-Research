@@ -76,7 +76,7 @@ def trigger_km_macro(uuid):
         subprocess.run(["osascript", "-e", script], check=True, stdout=subprocess.DEVNULL)
         ui.ok(f"Triggered Keyboard Maestro macro {uuid}")
         km.log(f"Keyboard Maestro → {label}")
-        km.macro_fired(label)
+        km.macro_fired(label, uuid)
     except subprocess.CalledProcessError as e:
         ui.err(f"Failed to trigger KM macro: {e}")
         km.log(f"Keyboard Maestro macro failed to fire: {label}")
@@ -143,6 +143,25 @@ def tidal_session():
         ui.err(f"Tidal login failed: {e}")
     return None
 
+def album_art(track):
+    """Best-effort (art, video) album cover URLs for a track.
+
+    Pure URL construction from IDs already present in the playlist response —
+    no extra API calls, so this can never slow the scrape down. `video` is
+    Tidal's animated album cover (an mp4), populated only on the few releases
+    that ship one; the HUD plays it in place of the still image."""
+    art = video = ""
+    alb = getattr(track, "album", None)
+    try:
+        if alb is not None and getattr(alb, "cover", None):
+            art = alb.image(320)
+        if alb is not None and getattr(alb, "video_cover", None):
+            video = alb.video(640)
+    except Exception:
+        pass
+    return art, video
+
+
 def fetch_playlist(session, playlist, progress, overall, window):
     """Fetch one playlist via the Tidal API, narrating live progress under `progress`.
 
@@ -175,13 +194,17 @@ def fetch_playlist(session, playlist, progress, overall, window):
                 if (t.date_added and t.date_added >= win_start
                         and (win_end is None or t.date_added < win_end)):
                     artists = ", ".join(a.name for a in (t.artists or []) if a.name)
+                    art, video = album_art(t)
                     tracks_data.append({
                         "Title": t.name or "Unknown Title",
                         "Artist": artists or "Unknown Artist",
                         "Album": (t.album.name if t.album else None) or "Unknown Album",
                         "Date Added": t.date_added.astimezone().strftime("%Y-%m-%d"),
                         "Source Playlist": playlist['name'],
+                        "Art": art,
+                        "Video Art": video,
                     })
+                    km.cover(art, t.name or "", artists, video)
             progress.update(
                 sub, completed=scanned,
                 detail=f"scanned {scanned} · {len(tracks_data)} recent",
@@ -263,7 +286,7 @@ def main():
     # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
     ui.phase(2, 3, "DEDUPE & SNAPSHOT")
     km.phase(2, 3, "DEDUPE & SNAPSHOT")
-    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added"]
+    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art"]
 
     if all_tracks:
         ui.step(f"{len(all_tracks)} recent matches found across all playlists")

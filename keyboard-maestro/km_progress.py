@@ -40,9 +40,10 @@ _state = {
     "phaseTotal": 3,
     "phaseLabel": "INITIALIZING",
     "overall": {"current": 0, "total": 0, "label": "", "pct": None},
-    "current": {"name": "", "detail": "", "status": "idle"},
+    "current": {"name": "", "detail": "", "status": "idle", "art": "", "video": ""},
     "log": [],
     "stats": {},
+    "covers": [],  # album covers discovered this run — drives the HUD's artwork wall
     "tracks": {"scraped": [], "missed": []},
     "kmMacros": [],   # names of Keyboard Maestro macros fired during/after the run
     "kmNote": "",     # shown instead when an outcome fires no macros at all
@@ -133,9 +134,33 @@ def overall(current, total, label=None, pct=None) -> None:
     _push(force=True)
 
 
-def current(name: str, detail: str = "", status: str = "working") -> None:
-    _state["current"] = {"name": name, "detail": detail, "status": status}
+def current(name: str, detail: str = "", status: str = "working",
+            art: str = "", video: str = "") -> None:
+    """`art`/`video` are the current track's album cover URLs (Tidal CDN); the
+    HUD shows them in its hero panel. Empty → the HUD falls back to the newest
+    wall cover, so callers without track-level art can just omit them."""
+    _state["current"] = {"name": name, "detail": detail, "status": status,
+                         "art": art, "video": video}
     _push()  # throttled — this is the high-frequency scan counter
+
+
+# The wall renders at most this many covers. Append-only up to the cap (never
+# FIFO-trimmed) so the HUD can render incrementally by stable index.
+_MAX_COVERS = 80
+
+
+def cover(art: str, title: str = "", artist: str = "", video: str = "") -> None:
+    """Add an album cover to the HUD's artwork wall (deduped by URL, capped).
+    Pushed immediately — covers arrive at most once per recent track found."""
+    if not art:
+        return
+    covers = _state.setdefault("covers", [])
+    if len(covers) >= _MAX_COVERS:
+        return
+    if any(c.get("art") == art for c in covers):
+        return
+    covers.append({"art": art, "title": title, "artist": artist, "video": video})
+    _push(force=True)
 
 
 def log(line: str) -> None:
@@ -157,6 +182,8 @@ def _slim(tracks) -> list:
             "title": (t.get("Title") or "").strip(),
             "artist": (t.get("Artist") or "").strip(),
             "source": (t.get("Source Playlist") or "").strip(),
+            "art": (t.get("Art") or "").strip(),
+            "video": (t.get("Video Art") or "").strip(),
         })
     return out
 
@@ -177,10 +204,11 @@ def results(scraped=None, missed=None) -> None:
     _push(force=True)
 
 
-def macro_fired(label: str) -> None:
+def macro_fired(label: str, uuid: str = "") -> None:
     """Record that a Keyboard Maestro macro was fired so the HUD can show it
-    (the results page lists every firing under the completion message)."""
-    _state.setdefault("kmMacros", []).append(label)
+    (the results page lists every firing under the completion message). With a
+    uuid, the HUD entry becomes clickable and opens the macro in the KM editor."""
+    _state.setdefault("kmMacros", []).append({"name": label, "uuid": uuid})
     _push(force=True)
 
 

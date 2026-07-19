@@ -20,6 +20,16 @@ Prefer a window over a terminal? Build the standalone **[New Music Research](app
 macOS app (`cd app && ./build.sh`). Launching it runs the whole pipeline and shows the
 live progress HUD in a real, resizable window — no Keyboard Maestro required.
 
+The HUD is artwork-first: every recent track discovered during the scrape drops its
+album cover onto a slowly drifting **artwork wall** behind the glass panels, a **hero
+panel** shows the cover of whatever track is currently being scanned or matched (with
+a blurred light-spill glow — and Tidal's animated video cover, when a release has one),
+and the results page presents everything scraped as an **album-art mosaic** with the
+missed tracks as thumbnails. Cover URLs come straight from the Tidal playlist response,
+so none of this adds API calls or slows the scrape. To preview the HUD without running
+a real scrape, `keyboard-maestro/demo.sh` replays a scripted run in its own 1920×1250
+window (`./demo.sh`, `./demo.sh fail`, `./demo.sh empty`).
+
 ---
 
 ## ✅ What to Expect

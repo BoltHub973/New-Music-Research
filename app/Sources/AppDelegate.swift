@@ -160,18 +160,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let uuid = pipeline.previousResultsMacroUUID
         if !uuid.isEmpty {
             pipeline.fireMacro(uuid: uuid)
-            payload = Self.appendKMMacro(pipeline.previousResultsMacroName, to: payload)
+            payload = Self.appendKMMacro(pipeline.previousResultsMacroName, uuid: uuid, to: payload)
         }
         pipeline.onUpdate?(payload)   // same path live frames take
     }
 
-    /// Append a fired-macro name to a progress payload's `kmMacros` list.
-    private static func appendKMMacro(_ name: String, to payload: String) -> String {
+    /// Append a fired macro to a progress payload's `kmMacros` list. Entries are
+    /// {name, uuid} dicts — the uuid makes the HUD entry clickable (opens the
+    /// macro in the KM editor). Older payloads may hold plain strings; both
+    /// shapes pass through JSONSerialization untouched.
+    private static func appendKMMacro(_ name: String, uuid: String, to payload: String) -> String {
         guard let data = payload.data(using: .utf8),
               var obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return payload }
-        var fired = obj["kmMacros"] as? [String] ?? []
-        fired.append(name)
+        var fired = obj["kmMacros"] as? [Any] ?? []
+        fired.append(["name": name, "uuid": uuid])
         obj["kmMacros"] = fired
         guard let out = try? JSONSerialization.data(withJSONObject: obj),
               let text = String(data: out, encoding: .utf8)

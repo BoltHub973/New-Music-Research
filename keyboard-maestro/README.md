@@ -8,8 +8,10 @@ runs in both.
 
 | File | Role |
 | :--- | :--- |
-| `km_progress.py` | Writes live pipeline state (phase, counts, log, scraped/missed tracks, done) **atomically to `~/.config/new-music-research/progress.json`**. Imported by `track_playlists.py` and `export_to_spotify.py`. (Keeps its historical name so those imports don't change.) |
-| `progress_window.html` | The HUD UI. Polls the progress every 300 ms and renders the futuristic HUD, then a scraped-vs-missed results page when the run completes. The app bundles a copy of this file at build time. |
+| `km_progress.py` | Writes live pipeline state (phase, counts, log, album covers, scraped/missed tracks, done) **atomically to `~/.config/new-music-research/progress.json`**. Imported by `track_playlists.py` and `export_to_spotify.py`. (Keeps its historical name so those imports don't change.) |
+| `progress_window.html` | The HUD UI. Polls the progress every 300 ms and renders the artwork-first HUD — live artwork wall, hero cover with light-spill (and Tidal video covers when a release has one), then an album-art mosaic results page when the run completes. The app bundles a copy of this file at build time. |
+| `demo.sh` | Preview the HUD in its own **1920×1250** chromeless window without launching the app (which would start a real scrape). `./demo.sh` for the happy path, `./demo.sh fail`, `./demo.sh empty`. |
+| `demo_run.js` | The scripted demo run `demo.sh` replays (real Tidal cover URLs, staged phases, edge cases). Loaded only with `?demo` in the URL; **not** bundled into the app. |
 
 ## How the HUD gets its data
 

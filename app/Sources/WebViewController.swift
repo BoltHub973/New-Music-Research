@@ -113,9 +113,26 @@ final class WebViewController: NSViewController {
 extension WebViewController: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage) {
-        if message.name == "nmr", (message.body as? String) == "close" {
+        guard message.name == "nmr", let body = message.body as? String else { return }
+        if body == "close" {
             onClose?()
+        } else if body.hasPrefix("editMacro:") {
+            openMacroInEditor(String(body.dropFirst("editMacro:".count)))
         }
+    }
+
+    /// The HUD's fired-macro entries are clickable: open that macro in the
+    /// Keyboard Maestro editor. The UUID comes from the progress file, so
+    /// validate its shape before splicing it into AppleScript.
+    private func openMacroInEditor(_ uuid: String) {
+        guard !uuid.isEmpty, uuid.allSatisfy({ $0.isHexDigit || $0 == "-" }) else { return }
+        let script = "tell application \"Keyboard Maestro\"\neditMacro \"\(uuid)\"\nactivate\nend tell"
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", script]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
     }
 }
 

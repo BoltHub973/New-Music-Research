@@ -6,6 +6,7 @@
 <title>New Music Research</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://resources.tidal.com">
 <link href="https://fonts.googleapis.com/css2?family=Michroma&family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -16,8 +17,12 @@
     --magenta:#ff4fd8;
     --ok:#00ff88; --warn:#f5a623; --err:#ff3366;
     --track:#222230;
+    /* hero column width — bounded by BOTH viewport axes so the square art
+       never starves the panel of height on short windows */
+    --hero-w:clamp(270px, min(30vw, 52vh), 500px);
   }
   *{box-sizing:border-box;}
+  [hidden]{display:none !important;}
   html,body{width:100%; height:100%;}
   html{font-size:19px;}
   body{
@@ -28,7 +33,8 @@
     -webkit-font-smoothing:antialiased;
     position:relative;
   }
-  /* ambient depth */
+
+  /* ── ambient layers (bottom → top: mesh, artwork wall, scrim, grid lines) ── */
   .bg{position:fixed; inset:0; z-index:0; pointer-events:none;}
   .bg.mesh{
     background:
@@ -36,6 +42,35 @@
       radial-gradient(ellipse at 85% 20%, rgba(192,132,252,.09) 0%, transparent 55%),
       radial-gradient(ellipse at 60% 100%, rgba(255,79,216,.06) 0%, transparent 55%),
       var(--abyss);
+  }
+
+  /* The artwork wall — every recent track discovered this run materializes as a
+     cover tile behind the glass. One slow pan animates the whole wall as a single
+     composited layer, so the ambience costs nothing per-tile. */
+  .artwall{position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none;}
+  .artwall-pan{
+    position:absolute; inset:-8% -6%;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(clamp(96px, 9.5vw, 150px), 1fr));
+    gap:10px; align-content:start;
+    animation:wallpan 90s ease-in-out infinite alternate; will-change:transform;
+  }
+  /* square tiles via padding-top (not aspect-ratio): WebKit doesn't reliably
+     propagate aspect-ratio item heights into grid track sizing, which collapsed
+     the rows and stacked the tiles on top of each other */
+  .wtile{position:relative; height:0; padding-top:100%; border-radius:10px; overflow:hidden;
+    background:var(--surface); animation:wallin .9s ease-out both;}
+  .wtile img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+    filter:saturate(.85) brightness(.6);}
+  /* discovery ping — a cyan pulse that fades as each new cover lands */
+  .wtile::after{content:''; position:absolute; inset:0; border-radius:10px; z-index:-1;
+    pointer-events:none;}
+  .wtile.fresh::after{z-index:1; border:1px solid var(--cyan);
+    box-shadow:0 0 18px var(--cyan-glow), inset 0 0 16px var(--cyan-glow);
+    animation:ping 1.5s ease-out both;}
+  .bg.scrim{
+    background:
+      radial-gradient(ellipse at 50% 42%, rgba(5,5,8,.30) 0%, rgba(5,5,8,.62) 74%),
+      linear-gradient(180deg, rgba(5,5,8,.46) 0%, rgba(5,5,8,.60) 50%, rgba(5,5,8,.86) 100%);
   }
   .bg.grid{
     background-image:
@@ -45,55 +80,107 @@
     mask-image:radial-gradient(ellipse at 50% 35%, #000 0%, transparent 80%);
     -webkit-mask-image:radial-gradient(ellipse at 50% 35%, #000 0%, transparent 80%);
   }
-  .wrap{position:relative; z-index:1; padding:46px 70px 44px; width:100%; max-width:1680px;
+
+  .wrap{position:relative; z-index:1; padding:40px 62px 40px; width:100%; max-width:1760px;
     margin:0 auto; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
 
-  /* header */
-  header{display:flex; align-items:flex-start; justify-content:space-between; gap:20px;}
+  /* ── header: title left, phase rail right ── */
+  header{display:flex; align-items:flex-start; justify-content:space-between; gap:16px 30px;
+    flex-wrap:wrap;}
   .title{
-    font-family:'Michroma',sans-serif; font-size:2.2rem; letter-spacing:.16em;
-    color:var(--cyan); margin:0;
+    font-family:'Michroma',sans-serif; font-size:2.1rem; letter-spacing:.16em;
+    color:var(--cyan); margin:0; white-space:nowrap;
     text-shadow:0 0 10px var(--cyan-glow), 0 0 34px var(--cyan-glow);
   }
   .subtitle{font-size:.92rem; letter-spacing:.22em; color:var(--violet); margin-top:8px; text-transform:uppercase;}
   .subtitle.lastweek{color:#fb923c;}
 
-  /* phase rail — visible only while a run's activities are underway */
-  .phases{display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin:40px 0 30px;}
+  .phases{display:flex; gap:12px; margin-top:6px;}
   .phases.hidden{display:none;}
   .phase{
-    border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:22px 26px;
-    background:rgba(255,255,255,.025); backdrop-filter:blur(14px);
-    display:flex; align-items:center; gap:14px; transition:border-color .3s, box-shadow .3s, background .3s;
+    border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:12px 18px;
+    background:rgba(17,17,24,.55); backdrop-filter:blur(14px);
+    display:flex; align-items:center; gap:11px; transition:border-color .3s, box-shadow .3s, background .3s;
   }
   .phase .idx{
-    font-family:'Orbitron',sans-serif; font-weight:700; font-size:1rem;
-    width:34px; height:34px; flex:0 0 34px; border-radius:9px;
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:.9rem;
+    width:30px; height:30px; flex:0 0 30px; border-radius:8px;
     display:flex; align-items:center; justify-content:center;
     background:var(--raised); color:var(--muted); border:1px solid rgba(255,255,255,.08);
   }
-  .phase .lbl{font-family:'JetBrains Mono',monospace; font-size:.82rem; letter-spacing:.1em; color:var(--muted); text-transform:uppercase;}
-  .phase.active{border-color:var(--cyan); background:rgba(0,240,255,.06); box-shadow:0 0 22px var(--cyan-glow), inset 0 0 18px rgba(0,240,255,.05);}
+  .phase .lbl{font-family:'JetBrains Mono',monospace; font-size:.76rem; letter-spacing:.1em;
+    color:var(--muted); text-transform:uppercase; white-space:nowrap;}
+  .phase.active{border-color:var(--cyan); background:rgba(0,240,255,.07); box-shadow:0 0 22px var(--cyan-glow), inset 0 0 18px rgba(0,240,255,.05);}
   .phase.active .idx{background:var(--cyan); color:#001016; border-color:var(--cyan); box-shadow:0 0 14px var(--cyan-glow);}
   .phase.active .lbl{color:var(--text);}
   .phase.done .idx{background:var(--ok); color:#00140a; border-color:var(--ok);}
   .phase.done .lbl{color:var(--text);}
 
-  /* overall progress */
+  /* ── stage: hero artwork column + progress panel ── */
+  .stage{flex:1 1 auto; min-height:0; margin-top:28px;
+    display:grid; grid-template-columns:var(--hero-w) minmax(0,1fr); gap:34px;}
+  .stage.results-mode{grid-template-columns:minmax(0,1fr);}
+  .stage.results-mode .hero{display:none;}
+
+  /* hero — the current track's album art, with a blurred light-spill halo */
+  .hero{display:flex; flex-direction:column; gap:22px; min-height:0; min-width:0;}
+  .hero-art{position:relative; width:100%; aspect-ratio:1/1; flex:0 0 auto;}
+  .hero-spill{position:absolute; inset:-11%; background-size:cover; background-position:center;
+    filter:blur(46px) saturate(1.7); opacity:0; transition:opacity 1.1s ease;
+    border-radius:34px; will-change:opacity;}
+  .hero-spill.on{opacity:.5;}
+  .hero-frame{position:absolute; inset:0; border-radius:20px; overflow:hidden;
+    border:1px solid rgba(255,255,255,.16); background:var(--surface);
+    box-shadow:0 18px 60px rgba(0,0,0,.62), 0 0 34px var(--cyan-glow);}
+  .hero-frame img, .hero-frame video{position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; opacity:0; transition:opacity .7s ease;}
+  .hero-frame img.on, .hero-frame video.on{opacity:1;}
+  .hero-frame img.on{animation:kenburns 18s ease-in-out infinite alternate; will-change:transform;}
+  .hero-frame video{z-index:2;}
+  .hero-fallback{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--ghost); transition:opacity .4s ease;}
+  .hero-fallback.off{opacity:0;}
+  .hero-fallback svg{width:36%; height:36%;}
+  /* HUD corner ticks */
+  .hero-art::before, .hero-art::after{content:''; position:absolute; width:26px; height:26px;
+    z-index:3; pointer-events:none; opacity:.85;}
+  .hero-art::before{top:-8px; left:-8px; border-top:2px solid var(--cyan);
+    border-left:2px solid var(--cyan); border-radius:8px 0 0 0;}
+  .hero-art::after{bottom:-8px; right:-8px; border-bottom:2px solid var(--violet);
+    border-right:2px solid var(--violet); border-radius:0 0 8px 0;}
+
+  .hero-meta{display:flex; flex-direction:column; gap:9px; min-height:0; min-width:0;}
+  .hero-name{font-weight:700; font-size:1.4rem; line-height:1.35; color:var(--text);
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+    hyphens:none; overflow-wrap:normal; word-break:normal;}
+  .hero-name:empty::before{content:'Standing by'; color:var(--ghost);}
+  /* once a run has finished, an empty name must not claim "Standing by" */
+  .stage.failed-mode .hero-name:empty::before{content:none;}
+  .hero-detail{font-family:'JetBrains Mono',monospace; font-size:.95rem; color:var(--muted);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:1.5em;}
+  .hero-status{display:flex; align-items:center; gap:11px;
+    font-family:'JetBrains Mono',monospace; font-size:.78rem; letter-spacing:.18em;
+    color:var(--muted); text-transform:uppercase;}
+  .spin{width:12px; height:12px; flex:0 0 12px; border-radius:50%;
+    background:var(--cyan); box-shadow:0 0 12px var(--cyan); animation:pulse 1.3s ease-in-out infinite;}
+
+  /* ── progress panel ── */
   .panel{
-    flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
-    border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:32px 40px;
-    background:rgba(255,255,255,.03); backdrop-filter:blur(22px) saturate(160%);
+    min-height:0; min-width:0; display:flex; flex-direction:column;
+    border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:30px 38px;
+    background:rgba(10,10,16,.52); backdrop-filter:blur(22px) saturate(160%);
     box-shadow:0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
   }
   .row{display:flex; align-items:baseline; justify-content:space-between; gap:16px;}
-  .row .k{font-family:'JetBrains Mono',monospace; font-size:.82rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase;}
-  .counts{font-family:'Orbitron',sans-serif; font-variant-numeric:tabular-nums; color:var(--text);}
+  .row .k{font-family:'JetBrains Mono',monospace; font-size:.82rem; letter-spacing:.14em;
+    color:var(--muted); text-transform:uppercase;
+    flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .counts{font-family:'Orbitron',sans-serif; font-variant-numeric:tabular-nums; color:var(--text); flex:0 0 auto;}
   .counts .n{color:var(--cyan); font-weight:700;}
-  .pct{font-family:'Orbitron',sans-serif; font-weight:900; font-size:2.1rem; color:var(--cyan);
+  .pct{font-family:'Orbitron',sans-serif; font-weight:900; color:var(--cyan);
     font-variant-numeric:tabular-nums; text-shadow:0 0 16px var(--cyan-glow); line-height:1; font-size:3rem;}
   .bar{position:relative; height:20px; border-radius:8px; background:var(--track);
-    overflow:hidden; margin-top:16px; border:1px solid rgba(255,255,255,.05);}
+    overflow:hidden; margin-top:16px; border:1px solid rgba(255,255,255,.05); flex:0 0 auto;}
   .bar .fill{position:absolute; inset:0 auto 0 0; width:0%;
     background:linear-gradient(90deg, var(--cyan), var(--violet));
     box-shadow:0 0 16px var(--cyan-glow); border-radius:8px; transition:width .45s ease;}
@@ -102,32 +189,129 @@
     animation:sheen 2.2s linear infinite;}
   .bar.indeterminate .fill{width:38%; animation:slide 1.5s ease-in-out infinite; transition:none;}
 
-  /* current activity */
-  .current{margin-top:18px; display:flex; align-items:center; gap:16px;}
-  .current .spin{width:13px; height:13px; flex:0 0 13px; border-radius:50%;
-    background:var(--cyan); box-shadow:0 0 12px var(--cyan); animation:pulse 1.3s ease-in-out infinite;}
-  .current .name{font-weight:700; color:var(--text); font-size:1.4rem;}
-  .current .detail{font-family:'JetBrains Mono',monospace; font-size:.92rem; color:var(--muted);}
-  .current .name:empty::before{content:'Standing by'; color:var(--ghost);}
+  /* stats */
+  .stats{display:flex; gap:30px; margin-top:18px; flex-wrap:wrap;}
+  .stat .v{font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.9rem; color:var(--violet); font-variant-numeric:tabular-nums;}
+  .stat .l{font-family:'JetBrains Mono',monospace; font-size:.74rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase;}
 
   /* log */
-  .log{margin-top:26px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
+  .log{margin-top:24px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
   .log h2{font-family:'JetBrains Mono',monospace; font-size:.78rem; letter-spacing:.18em;
     color:var(--ghost); text-transform:uppercase; margin:0 0 10px;}
-  .log ul{list-style:none; margin:0; padding:0; flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto;
-    font-family:'JetBrains Mono',monospace; font-size:1rem;}
+  .log ul{list-style:none; margin:0; padding:0; flex:1 1 auto; min-height:0; overflow-y:auto;
+    font-family:'JetBrains Mono',monospace; font-size:.98rem;}
   .log li{padding:5px 0; color:var(--muted); border-bottom:1px solid rgba(255,255,255,.04);
     display:flex; gap:10px; align-items:baseline;}
   .log li::before{content:'\203A'; color:var(--cyan); flex:0 0 auto;}
   .log li:last-child{color:var(--text);}
 
-  /* stats */
-  .stats{display:flex; gap:30px; margin-top:18px; flex-wrap:wrap;}
-  .stat .v{font-family:'Orbitron',sans-serif; font-weight:700; font-size:2rem; color:var(--violet); font-variant-numeric:tabular-nums;}
-  .stat .l{font-family:'JetBrains Mono',monospace; font-size:.72rem; letter-spacing:.14em; color:var(--muted); text-transform:uppercase;}
+  /* busy overlay — a long blocking step that can't report incremental progress.
+     The hero keeps showing artwork; only the panel's widgets give way. */
+  .busy-card{display:none; flex:1 1 auto; min-height:0;
+    flex-direction:column; align-items:center; justify-content:center; gap:28px; text-align:center;}
+  .stage.busy-mode .busy-card{display:flex; animation:rise .4s ease-out both;}
+  .stage.busy-mode .panel > .row,
+  .stage.busy-mode .panel > .bar,
+  .stage.busy-mode .panel > .stats,
+  .stage.busy-mode .panel > .log{display:none !important;}
+  .busy-ring{width:86px; height:86px; border-radius:50%;
+    border:3px solid rgba(0,240,255,.14); border-top-color:var(--cyan);
+    box-shadow:0 0 30px var(--cyan-glow); animation:rotate 1s linear infinite;}
+  .busy-title{font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.6rem;
+    letter-spacing:.12em; color:var(--cyan); text-transform:uppercase; text-shadow:0 0 18px var(--cyan-glow);}
+  .busy-detail{font-family:'JetBrains Mono',monospace; font-size:1rem; color:var(--muted);
+    max-width:620px; line-height:1.6;}
 
-  /* done overlay */
-  .done-card{flex:0 0 auto; margin-top:22px; border:1px solid rgba(0,255,136,.4); border-radius:18px; padding:22px 26px;
+  /* results-mode — the run completed OK: the live widgets and hero give way to
+     the scraped artwork mosaic + missed column and a slim completion footer. */
+  .stage.results-mode .panel > .row,
+  .stage.results-mode .panel > .bar,
+  .stage.results-mode .panel > .stats,
+  .stage.results-mode .panel > .log,
+  .stage.results-mode .panel > .busy-card{display:none !important;}
+  /* failed-mode — the run finished with an error: hero stays (last artwork),
+     widgets hide, and the red completion card is centered and unmissable. */
+  .stage.failed-mode .panel > .row,
+  .stage.failed-mode .panel > .bar,
+  .stage.failed-mode .panel > .stats,
+  .stage.failed-mode .panel > .log,
+  .stage.failed-mode .panel > .busy-card{display:none !important;}
+  .stage.failed-mode .done-card{margin-top:auto; margin-bottom:auto;}
+  .stage.failed-mode .hero-frame{border-color:rgba(255,51,102,.5);
+    box-shadow:0 18px 60px rgba(0,0,0,.62), 0 0 34px rgba(255,51,102,.18);}
+  .stage.failed-mode .hero-art::before{border-color:var(--err);}
+  .stage.failed-mode .hero-art::after{border-color:var(--err);}
+
+  /* results page */
+  /* overflow-y so a too-short window scrolls the columns instead of crushing
+     them into each other (min-height keeps each column's header readable) */
+  .results{display:none; flex:1 1 auto; min-height:0; margin-top:2px;
+    grid-template-columns:minmax(0,1.9fr) minmax(0,1fr); gap:22px; overflow-y:auto;}
+  .results.show{display:grid;}
+  .result-col{display:flex; flex-direction:column; min-height:150px; min-width:0;
+    border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:20px 24px;
+    background:rgba(255,255,255,.025);}
+  .result-col.scraped{border-color:rgba(0,255,136,.28); box-shadow:inset 0 0 28px rgba(0,255,136,.045);}
+  .result-col.missed{border-color:rgba(255,51,102,.28); box-shadow:inset 0 0 28px rgba(255,51,102,.045);}
+  .result-head{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;}
+  .result-col h3{margin:0; font-family:'JetBrains Mono',monospace; font-size:.8rem;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--muted);}
+  .result-col h3 .sub{color:var(--ghost); letter-spacing:.12em;}
+  .result-col .count{font-family:'Orbitron',sans-serif; font-weight:900; font-size:2.2rem;
+    font-variant-numeric:tabular-nums; line-height:1; margin:6px 0 14px;}
+  .result-col.scraped .count{color:var(--ok); text-shadow:0 0 18px rgba(0,255,136,.2);}
+  .result-col.missed .count{color:var(--err); text-shadow:0 0 18px rgba(255,51,102,.2);}
+
+  /* scraped — artwork mosaic. Artwork-only by design: tracks without a cover
+     (or whose cover fails to load) render as text rows below the grid instead
+     of hollow placeholder tiles. */
+  .scrollzone{flex:1 1 auto; min-height:0; overflow-y:auto; padding:2px;}
+  .artgrid{list-style:none; margin:0; padding:0;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(142px,1fr)); gap:12px;
+    align-content:start;}
+  .artgrid li{position:relative; height:0; padding-top:100%; border-radius:12px; overflow:hidden;
+    border:1px solid rgba(255,255,255,.09); background:var(--surface);
+    transition:border-color .25s ease, box-shadow .25s ease;
+    animation:wallin .5s ease-out both;}
+  /* a tile joins the mosaic only once its cover has actually loaded */
+  .artgrid li.pending{display:none;}
+  .artgrid li:hover{border-color:var(--cyan); box-shadow:0 0 18px var(--cyan-glow);}
+  .artgrid li img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .artgrid .cap{position:absolute; inset:auto 0 0 0; padding:30px 11px 9px;
+    background:linear-gradient(180deg, transparent, rgba(0,0,0,.9) 64%);}
+  .artgrid .t{font-weight:600; font-size:.92rem; line-height:1.3; color:#fff;
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+    hyphens:none; overflow-wrap:normal; word-break:normal;}
+  .artgrid .a{display:block; font-family:'JetBrains Mono',monospace; font-size:.74rem;
+    color:rgba(232,232,240,.78); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
+  .artgrid .src{display:block; font-family:'JetBrains Mono',monospace; font-size:.74rem;
+    color:var(--violet); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-height:0; opacity:0; transition:max-height .25s ease, opacity .25s ease;}
+  .artgrid li:hover .src{max-height:1.6em; opacity:1;}
+  .artgrid li.empty, .tracklist li.empty{color:var(--ghost); height:auto; padding:16px 2px;
+    font-style:italic; border:none; background:none; grid-column:1/-1; animation:none;
+    display:block; overflow:visible;}
+
+  /* missed — thumbnail rows (also reused, thumb-less, for scraped tracks
+     without artwork, listed under the mosaic) */
+  .tracklist{list-style:none; margin:0; padding:0; overflow-y:auto; flex:1 1 auto; min-height:0;}
+  .tracklist.plain{overflow:visible; flex:none; min-height:0; margin-top:8px;}
+  .tracklist li{padding:8px 2px; border-bottom:1px solid rgba(255,255,255,.05);
+    display:flex; gap:13px; align-items:center;}
+  .thumb{width:54px; height:54px; flex:0 0 54px; border-radius:8px; overflow:hidden;
+    background:var(--raised); border:1px solid rgba(255,51,102,.28);
+    display:flex; align-items:center; justify-content:center; color:var(--ghost);}
+  .thumb img{width:100%; height:100%; object-fit:cover; filter:saturate(.55);}
+  .thumb svg{width:55%; height:55%;}
+  .tracklist li .txt{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px;}
+  .tracklist li .t{color:var(--text); font-weight:600; font-size:1.02rem;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tracklist li .a{font-family:'JetBrains Mono',monospace; font-size:.82rem; color:var(--muted);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tracklist li .a .src{color:var(--violet);}
+
+  /* done card */
+  .done-card{flex:0 0 auto; margin-top:20px; border:1px solid rgba(0,255,136,.4); border-radius:18px; padding:22px 26px;
     background:rgba(0,255,136,.05); box-shadow:0 0 30px rgba(0,255,136,.12); display:none;}
   .done-card.show{display:block; animation:rise .5s ease-out both;}
   .done-card.fail{border-color:rgba(255,51,102,.45); background:rgba(255,51,102,.06); box-shadow:0 0 30px rgba(255,51,102,.14);}
@@ -135,68 +319,26 @@
   .done-head .mark{font-family:'Orbitron',sans-serif; font-weight:900; font-size:1.3rem; color:var(--ok);}
   .done-card.fail .mark{color:var(--err);}
   .done-head .msg{font-size:1.08rem; color:var(--text); font-weight:500;}
-  .km-fired{margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:.9rem;
+  .done-card.fail .msg{color:var(--err);}
+  /* Informational only — which KM macros this run fired (see Help ▸ Keyboard
+     Maestro Firing Rules). Deliberately muted so it never reads as a link. */
+  .km-cap{margin-top:14px; font-family:'JetBrains Mono',monospace; font-size:.72rem;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--ghost);}
+  .km-fired{margin-top:4px; font-family:'JetBrains Mono',monospace; font-size:.9rem;
     color:var(--muted); line-height:1.6;}
-  .km-fired .k{color:var(--cyan);}
-  .km-fired.none{color:var(--ghost); font-style:italic;}
+  /* clickable variant — opens the macro in the Keyboard Maestro editor */
+  .km-fired.km-link{cursor:pointer; width:fit-content; max-width:100%;
+    border-bottom:1px dotted rgba(136,136,160,.55);
+    transition:color .2s ease, border-color .2s ease;}
+  .km-fired.km-link:hover{color:var(--cyan); border-bottom-color:var(--cyan);}
+  .km-fired.km-link:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
+  .km-fired.none{margin-top:12px; color:var(--ghost); font-style:italic;}
   .actions{margin-top:18px; display:flex; gap:12px;}
   button{font-family:'JetBrains Mono',monospace; font-size:.9rem; letter-spacing:.06em; font-weight:600;
     padding:11px 26px; border-radius:10px; cursor:pointer; transition:all .2s ease;
     background:transparent; border:1px solid var(--cyan); color:var(--cyan); box-shadow:0 0 14px var(--cyan-glow);}
   button:hover{background:var(--cyan-glow); box-shadow:0 0 24px var(--cyan-glow);}
   button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
-
-  /* busy overlay — a long blocking step that can't report incremental progress.
-     When active, the progress widgets hide and a centered working message shows. */
-  .busy-card{display:none; flex:1 1 auto; min-height:0;
-    flex-direction:column; align-items:center; justify-content:center; gap:28px; text-align:center;}
-  .panel.busy-mode .busy-card{display:flex; animation:rise .4s ease-out both;}
-  .panel.busy-mode > .row,
-  .panel.busy-mode > .bar,
-  .panel.busy-mode > .current,
-  .panel.busy-mode > .stats,
-  .panel.busy-mode > .log{display:none !important;}
-
-  /* results-mode — once the run completes, the live progress widgets give way to
-     the scraped-vs-missed columns + a slim footer, so the page lays out cleanly at
-     any window size instead of overlapping (the old KM prompt was always fullscreen). */
-  .panel.results-mode > .row,
-  .panel.results-mode > .bar,
-  .panel.results-mode > .current,
-  .panel.results-mode > .stats,
-  .panel.results-mode > .log,
-  .panel.results-mode > .busy-card{display:none !important;}
-  .busy-ring{width:86px; height:86px; border-radius:50%;
-    border:3px solid rgba(0,240,255,.14); border-top-color:var(--cyan);
-    box-shadow:0 0 30px var(--cyan-glow); animation:rotate 1s linear infinite;}
-  .busy-title{font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.7rem;
-    letter-spacing:.12em; color:var(--cyan); text-transform:uppercase; text-shadow:0 0 18px var(--cyan-glow);}
-  .busy-detail{font-family:'JetBrains Mono',monospace; font-size:1.02rem; color:var(--muted);
-    max-width:660px; line-height:1.6;}
-
-  /* results page (shown when the run completes) */
-  .results{display:none; flex:1 1 auto; min-height:0; margin-top:24px;
-    grid-template-columns:1fr 1fr; gap:24px;}
-  .results.show{display:grid;}
-  .result-col{display:flex; flex-direction:column; min-height:0;
-    border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:22px 26px;
-    background:rgba(255,255,255,.025);}
-  .result-col.scraped{border-color:rgba(0,255,136,.28); box-shadow:inset 0 0 28px rgba(0,255,136,.045);}
-  .result-col.missed{border-color:rgba(255,51,102,.28); box-shadow:inset 0 0 28px rgba(255,51,102,.045);}
-  .result-col h3{margin:0; font-family:'JetBrains Mono',monospace; font-size:.8rem;
-    letter-spacing:.18em; text-transform:uppercase; color:var(--muted);}
-  .result-col h3 .sub{color:var(--ghost); letter-spacing:.12em;}
-  .result-col .count{font-family:'Orbitron',sans-serif; font-weight:900; font-size:2.4rem;
-    font-variant-numeric:tabular-nums; line-height:1; margin:8px 0 16px;}
-  .result-col.scraped .count{color:var(--ok); text-shadow:0 0 18px rgba(0,255,136,.2);}
-  .result-col.missed .count{color:var(--err); text-shadow:0 0 18px rgba(255,51,102,.2);}
-  .tracklist{list-style:none; margin:0; padding:0; overflow-y:auto; flex:1 1 auto; min-height:0;}
-  .tracklist li{padding:9px 2px; border-bottom:1px solid rgba(255,255,255,.05);
-    display:flex; flex-direction:column; gap:2px;}
-  .tracklist li .t{color:var(--text); font-weight:600; font-size:1.04rem;}
-  .tracklist li .a{font-family:'JetBrains Mono',monospace; font-size:.84rem; color:var(--muted);}
-  .tracklist li .a .src{color:var(--violet);}
-  .tracklist .empty{color:var(--ghost); padding:16px 2px; font-style:italic;}
   button.primary{background:var(--cyan); color:#001016; border-color:var(--cyan); box-shadow:0 0 18px var(--cyan-glow);
     display:inline-flex; align-items:center; gap:9px;}
   button.primary:hover{background:#5cf6ff; box-shadow:0 0 30px var(--cyan-glow);}
@@ -212,100 +354,183 @@
   @keyframes slide{0%{left:-40%;}100%{left:100%;}}
   @keyframes rise{from{opacity:0; transform:translateY(14px);}to{opacity:1; transform:translateY(0);}}
   @keyframes rotate{to{transform:rotate(360deg);}}
+  @keyframes wallpan{from{transform:translate3d(0,0,0);}to{transform:translate3d(-2.2%,-3%,0);}}
+  @keyframes wallin{from{opacity:0; transform:scale(.72);}to{opacity:1; transform:scale(1);}}
+  @keyframes ping{0%{opacity:.9;}100%{opacity:0;}}
+  @keyframes kenburns{from{transform:scale(1);}to{transform:scale(1.07);}}
 
-  /* Responsive: reclaim the generous fullscreen padding on shorter/narrower windows
-     (the app is freely resizable; the old KM prompt was always fullscreen). */
-  @media (max-height: 880px), (max-width: 1180px){
-    .wrap{padding:30px 54px 30px;}
-    .phases{margin:26px 0 22px;}
-    .panel{padding:26px 34px;}
-    .title{font-size:1.9rem;}
+  /* Responsive: the app window is freely resizable (min 760×540). */
+  @media (max-width:1280px){
+    .wrap{padding:30px 46px 30px;}
+    .stage{gap:26px;}
+    .title{font-size:1.85rem;}
+    .artgrid{grid-template-columns:repeat(auto-fill, minmax(124px,1fr));}
   }
-  @media (max-height: 720px){
-    .wrap{padding:20px 44px 22px;}
-    .phases{margin:16px 0 14px; gap:14px;}
-    .phase{padding:14px 18px;}
-    .title{font-size:1.55rem;}
-    .pct{font-size:2.2rem;}
-    .result-col{padding:16px 20px;}
-    .result-col .count{font-size:1.9rem; margin:6px 0 10px;}
+  @media (max-width:1000px){
+    .phase .lbl{display:none;}
+    .phase{padding:10px 12px;}
   }
+  /* stack the result columns only when there's vertical room for both;
+     short windows keep them side-by-side with internal scrolling instead */
+  @media (max-width:1000px) and (min-height:641px){
+    .results{grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1.5fr) minmax(0,1fr);}
+  }
+  /* narrow: hero flips horizontal (art beside meta) above the panel */
+  @media (max-width:900px){
+    .stage{grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);}
+    .hero{flex-direction:row; align-items:center; gap:24px;}
+    .hero-art{width:170px; flex:0 0 170px;}
+    .hero-name{font-size:1.2rem;}
+  }
+  @media (max-height:840px){
+    .wrap{padding:24px 46px 24px;}
+    .stage{margin-top:18px; gap:24px;}
+    :root{--hero-w:clamp(240px, min(28vw, 46vh), 420px);}
+    .panel{padding:22px 30px;}
+    .pct{font-size:2.3rem;}
+    .title{font-size:1.7rem;}
+    .hero{gap:14px;}
+    .hero-name{font-size:1.2rem;}
+  }
+  @media (max-height:640px){
+    .wrap{padding:16px 36px 16px;}
+    .phases{display:none;}
+    :root{--hero-w:clamp(200px, min(26vw, 40vh), 340px);}
+    .result-col{padding:14px 18px; min-height:120px;}
+    .result-col .count{font-size:1.8rem; margin:4px 0 10px;}
+    .results{gap:14px;}
+    .artgrid{grid-template-columns:repeat(auto-fill, minmax(108px,1fr)); gap:9px;}
+    .done-card{padding:13px 18px; margin-top:12px;}
+    .actions{margin-top:10px;}
+    .km-fired{margin-top:6px; font-size:.8rem;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  }
+
+  /* No prefers-reduced-motion fallback ON PURPOSE: Adrian runs macOS Reduce
+     Motion globally but explicitly wants this HUD fully animated (2026-07-19).
+     Don't re-add a reduced-motion block here. */
 </style>
 </head>
 <body data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
   <div class="bg mesh"></div>
+  <div class="artwall" aria-hidden="true"><div class="artwall-pan" id="artwall"></div></div>
+  <div class="bg scrim"></div>
   <div class="bg grid"></div>
+
+  <!-- vinyl-record placeholder, stamped wherever a cover is missing/unloadable -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <g id="vinyl" fill="none" stroke="currentColor" stroke-width="2.4">
+        <circle cx="24" cy="24" r="20"/>
+        <circle cx="24" cy="24" r="9" opacity=".6"/>
+        <circle cx="24" cy="24" r="2.4" fill="currentColor" stroke="none"/>
+      </g>
+    </defs>
+  </svg>
+
   <div class="wrap">
     <header>
       <div>
         <h1 class="title">DX&nbsp;BROADCAST&nbsp;SYSTEM</h1>
         <div class="subtitle" id="subtitle">This Week</div>
       </div>
+      <div class="phases hidden" id="phases">
+        <div class="phase" data-p="1"><div class="idx">1</div><div class="lbl">Scrape Tidal</div></div>
+        <div class="phase" data-p="2"><div class="idx">2</div><div class="lbl">Dedupe</div></div>
+        <div class="phase" data-p="3"><div class="idx">3</div><div class="lbl">Export to Spotify</div></div>
+      </div>
     </header>
 
-    <div class="phases hidden" id="phases">
-      <div class="phase" data-p="1"><div class="idx">1</div><div class="lbl">Scrape Tidal</div></div>
-      <div class="phase" data-p="2"><div class="idx">2</div><div class="lbl">Dedupe</div></div>
-      <div class="phase" data-p="3"><div class="idx">3</div><div class="lbl">Export to Spotify</div></div>
-    </div>
-
-    <div class="panel">
-      <div class="row">
-        <span class="k" id="overallLabel">Standing by</span>
-        <span class="counts"><span class="n" id="oCur">0</span> / <span id="oTot">0</span></span>
-      </div>
-      <div class="row" style="margin-top:6px;">
-        <span></span>
-        <span class="pct" id="pct">0%</span>
-      </div>
-      <div class="bar indeterminate" id="bar"><div class="fill" id="fill"></div></div>
-
-      <div class="current">
-        <span class="spin" id="spin"></span>
-        <span class="name" id="curName"></span>
-        <span class="detail" id="curDetail"></span>
-      </div>
-
-      <div class="stats" id="stats"></div>
-
-      <div class="log">
-        <h2>Activity</h2>
-        <ul id="log"></ul>
-      </div>
-
-      <div class="busy-card" id="busyCard">
-        <div class="busy-ring"></div>
-        <div class="busy-title" id="busyTitle">Working…</div>
-        <div class="busy-detail" id="busyDetail"></div>
-      </div>
-
-      <div class="results" id="results">
-        <div class="result-col scraped">
-          <h3>Scraped <span class="sub">· found on Tidal</span></h3>
-          <div class="count" id="scrapedCount">0</div>
-          <ul class="tracklist" id="scrapedList"></ul>
+    <div class="stage" id="stage">
+      <aside class="hero">
+        <div class="hero-art">
+          <div class="hero-spill" id="heroSpill"></div>
+          <div class="hero-frame">
+            <div class="hero-fallback" id="heroFallback">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><use href="#vinyl"/></svg>
+            </div>
+            <img id="heroImgA" alt="Current track album art">
+            <img id="heroImgB" alt="Current track album art">
+            <video id="heroVideo" muted playsinline loop hidden></video>
+          </div>
         </div>
-        <div class="result-col missed">
-          <h3>Missed <span class="sub">· no Spotify match</span></h3>
-          <div class="count" id="missedCount">0</div>
-          <ul class="tracklist" id="missedList"></ul>
+        <div class="hero-meta">
+          <div class="hero-name" id="curName"></div>
+          <div class="hero-detail" id="curDetail"></div>
+          <div class="hero-status"><span class="spin" id="spin"></span><span id="statusWord">Standing by</span></div>
         </div>
-      </div>
+      </aside>
 
-      <div class="done-card" id="doneCard">
-        <div class="done-head"><span class="mark" id="doneMark">&check;</span><span class="msg" id="doneMsg"></span></div>
-        <div id="kmFired"></div>
-        <div class="actions">
-          <button id="openBtn" class="primary" type="button" style="display:none;"><svg class="sp-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.5 17.3c-.22.36-.68.47-1.04.25-2.85-1.74-6.44-2.13-10.66-1.17-.41.1-.82-.16-.91-.57-.1-.41.16-.82.57-.91 4.62-1.06 8.58-.6 11.78 1.36.37.22.48.68.26 1.04zm1.47-3.27c-.28.45-.86.59-1.31.32-3.26-2-8.23-2.58-12.09-1.41-.5.15-1.04-.13-1.19-.63-.15-.5.13-1.04.64-1.2 4.41-1.34 9.89-.69 13.63 1.61.45.28.59.86.32 1.31zm.13-3.4C15.24 8.31 8.82 8.09 5.09 9.22c-.6.18-1.23-.16-1.41-.75-.18-.6.15-1.23.75-1.41 4.29-1.3 11.4-1.05 15.9 1.62.54.32.72 1.02.4 1.55-.32.54-1.02.72-1.55.4z"/></svg>Open in Spotify</button>
+      <div class="panel">
+        <div class="row">
+          <span class="k" id="overallLabel">Standing by</span>
+          <span class="counts"><span class="n" id="oCur">0</span> / <span id="oTot">0</span></span>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <span></span>
+          <span class="pct" id="pct">0%</span>
+        </div>
+        <div class="bar indeterminate" id="bar"><div class="fill" id="fill"></div></div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="log">
+          <h2>Activity</h2>
+          <ul id="log"></ul>
+        </div>
+
+        <div class="busy-card" id="busyCard">
+          <div class="busy-ring"></div>
+          <div class="busy-title" id="busyTitle">Working…</div>
+          <div class="busy-detail" id="busyDetail"></div>
+        </div>
+
+        <div class="results" id="results">
+          <div class="result-col scraped">
+            <div class="result-head">
+              <h3>Scraped <span class="sub">· found on Tidal</span></h3>
+            </div>
+            <div class="count" id="scrapedCount">0</div>
+            <div class="scrollzone">
+              <ul class="artgrid" id="scrapedList"></ul>
+              <ul class="tracklist plain" id="scrapedPlainList" hidden></ul>
+            </div>
+          </div>
+          <div class="result-col missed">
+            <div class="result-head">
+              <h3>Missed <span class="sub">· no Spotify match</span></h3>
+            </div>
+            <div class="count" id="missedCount">0</div>
+            <ul class="tracklist" id="missedList"></ul>
+          </div>
+        </div>
+
+        <div class="done-card" id="doneCard">
+          <div class="done-head"><span class="mark" id="doneMark">&check;</span><span class="msg" id="doneMsg"></span></div>
+          <div id="kmFired"></div>
+          <div class="actions">
+            <button id="openBtn" class="primary" type="button" style="display:none;"><svg class="sp-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.5 17.3c-.22.36-.68.47-1.04.25-2.85-1.74-6.44-2.13-10.66-1.17-.41.1-.82-.16-.91-.57-.1-.41.16-.82.57-.91 4.62-1.06 8.58-.6 11.78 1.36.37.22.48.68.26 1.04zm1.47-3.27c-.28.45-.86.59-1.31.32-3.26-2-8.23-2.58-12.09-1.41-.5.15-1.04-.13-1.19-.63-.15-.5.13-1.04.64-1.2 4.41-1.34 9.89-.69 13.63 1.61.45.28.59.86.32 1.31zm.13-3.4C15.24 8.31 8.82 8.09 5.09 9.22c-.6.18-1.23-.16-1.41-.75-.18-.6.15-1.23.75-1.41 4.29-1.3 11.4-1.05 15.9 1.62.54.32.72 1.02.4 1.55-.32.54-1.02.72-1.55.4z"/></svg>Open in Spotify</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
 <script>
+  // Dev harness: open this file directly in a browser with ?demo (or ?demo=fail /
+  // ?demo=empty) to replay a scripted run against real Tidal cover URLs — no app,
+  // no pipeline, no Spotify. demo_run.js lives next to this file in the repo and
+  // is deliberately NOT bundled into the app.
+  if (!window.KeyboardMaestro && /[?&]demo/.test(location.search)) {
+    var demoScript = document.createElement('script');
+    // cache-busted so demo edits always load fresh (dev harness only)
+    demoScript.src = 'demo_run.js?ts=' + Date.now();
+    document.head.appendChild(demoScript);
+  }
+
   (function(){
-    var KM = window.KeyboardMaestro;
-    function fit(){ try { if (KM && KM.ResizeWindow) KM.ResizeWindow('0,0,' + screen.availWidth + ',' + screen.availHeight); } catch(e){} }
+    function KM(){ return window.KeyboardMaestro; }
+    function fit(){ try { var k = KM(); if (k && k.ResizeWindow) k.ResizeWindow('0,0,' + screen.availWidth + ',' + screen.availHeight); } catch(e){} }
     fit();
     window.addEventListener('load', fit);
     setTimeout(fit, 120); setTimeout(fit, 500);
@@ -318,24 +543,197 @@
       pct: document.getElementById('pct'), bar: document.getElementById('bar'),
       fill: document.getElementById('fill'), spin: document.getElementById('spin'),
       curName: document.getElementById('curName'), curDetail: document.getElementById('curDetail'),
+      statusWord: document.getElementById('statusWord'),
       stats: document.getElementById('stats'), log: document.getElementById('log'),
-      logBox: document.querySelector('.log'), current: document.querySelector('.current'),
       results: document.getElementById('results'),
       scrapedCount: document.getElementById('scrapedCount'), scrapedList: document.getElementById('scrapedList'),
+      scrapedPlainList: document.getElementById('scrapedPlainList'),
       missedCount: document.getElementById('missedCount'), missedList: document.getElementById('missedList'),
       doneCard: document.getElementById('doneCard'), doneMark: document.getElementById('doneMark'),
       doneMsg: document.getElementById('doneMsg'), subtitle: document.getElementById('subtitle'),
       kmFired: document.getElementById('kmFired'),
       openBtn: document.getElementById('openBtn'),
-      panel: document.querySelector('.panel'),
+      stage: document.getElementById('stage'),
+      wall: document.getElementById('artwall'),
+      heroSpill: document.getElementById('heroSpill'),
+      heroImgs: [document.getElementById('heroImgA'), document.getElementById('heroImgB')],
+      heroVideo: document.getElementById('heroVideo'),
+      heroFallback: document.getElementById('heroFallback'),
       busyTitle: document.getElementById('busyTitle'), busyDetail: document.getElementById('busyDetail')
     };
     var STATUS_COLOR = {opening:'var(--violet)', scanning:'var(--cyan)', working:'var(--cyan)',
                         exporting:'var(--magenta)', done:'var(--ok)', idle:'var(--ghost)'};
+    var STATUS_WORD  = {opening:'Opening', scanning:'Scanning', working:'Working',
+                        exporting:'Matching on Spotify', done:'Complete', idle:'Standing by'};
 
-    function renderTracks(ul, tracks){
+    // Tidal cover URLs are size-addressed (…/320x320.jpg); derive the size each
+    // surface needs — 160 for wall tiles, 640 for the hero — from the one URL
+    // the pipeline sends. Non-Tidal URLs pass through untouched.
+    function sized(url, px){
+      return url ? url.replace(/\/\d+x\d+(\.jpg)$/i, '/' + px + 'x' + px + '$1') : url;
+    }
+    function vinylSVG(){
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 48 48');
+      svg.setAttribute('aria-hidden', 'true');
+      var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('href', '#vinyl');
+      svg.appendChild(use);
+      return svg;
+    }
+
+    // ── artwork wall — one tile per unique cover, appended in discovery order.
+    // The wall starts empty and fills organically as the scrape finds tracks;
+    // covers are NEVER repeated to pad it out (Adrian explicitly dislikes
+    // duplicate-artwork fill — 2026-07-19). A tile whose image fails to load is
+    // removed outright so the wall never shows a blank slot.
+    var wallSeen = {};
+    var wallCount = 0;
+    function renderWall(covers){
+      (covers || []).forEach(function(c){
+        if (!c || !c.art || wallSeen[c.art]) return;
+        wallSeen[c.art] = 1;
+        var tile = document.createElement('div');
+        tile.className = 'wtile fresh';
+        tile.style.animationDelay = ((wallCount++ % 6) * 70) + 'ms';
+        var img = document.createElement('img');
+        img.decoding = 'async'; img.alt = '';
+        img.onerror = function(){ tile.remove(); };
+        img.src = sized(c.art, 160);
+        tile.appendChild(img);
+        els.wall.appendChild(tile);
+      });
+    }
+
+    // ── hero art — crossfading image pair + a single optional video element.
+    var hero = {art:null, video:null, front:0};
+    function stopHeroVideo(){
+      var v = els.heroVideo;
+      v.classList.remove('on');
+      v.hidden = true;
+      try { v.pause(); } catch(e){}
+      v.removeAttribute('src');
+      try { v.load(); } catch(e){}
+    }
+    function showHeroImage(art){
+      var big = sized(art, 640);
+      var next = els.heroImgs[hero.front ^ 1];
+      var cur = els.heroImgs[hero.front];
+      next.onload = function(){
+        hero.front ^= 1;
+        next.classList.add('on');
+        cur.classList.remove('on');
+        els.heroFallback.classList.add('off');
+        els.heroSpill.style.backgroundImage = 'url("' + big + '")';
+        els.heroSpill.classList.add('on');
+      };
+      next.onerror = function(){
+        if (!cur.classList.contains('on')) {
+          els.heroFallback.classList.remove('off');
+          els.heroSpill.classList.remove('on');
+        }
+      };
+      next.src = big;
+    }
+    function setHero(art, video){
+      art = art || '';
+      video = video || '';
+      if (art === hero.art && video === hero.video) return;
+      hero.art = art; hero.video = video;
+      if (video) {
+        var v = els.heroVideo;
+        v.hidden = false;
+        v.onerror = function(){ stopHeroVideo(); };  // bad/missing mp4 → still image stays
+        v.oncanplay = function(){ v.classList.add('on'); };
+        v.src = video;
+        var p = v.play(); if (p && p.catch) p.catch(function(){});
+      } else {
+        stopHeroVideo();
+      }
+      if (art) {
+        showHeroImage(art);
+      } else if (!video) {
+        els.heroImgs.forEach(function(im){ im.classList.remove('on'); });
+        els.heroSpill.classList.remove('on');
+        els.heroFallback.classList.remove('off');
+      }
+    }
+
+    // ── results ──────────────────────────────────────────────────────────
+    // The mosaic is artwork-only: a track with no cover — or whose cover fails
+    // to load — is listed as a text row under the grid instead of a hollow tile.
+    function addPlainRow(ul, t){
+      ul.hidden = false;
+      var li = document.createElement('li');
+      var txt = document.createElement('div'); txt.className = 'txt';
+      var title = document.createElement('span'); title.className = 't';
+      title.textContent = t.title || 'Unknown title';
+      var meta = document.createElement('span'); meta.className = 'a';
+      meta.textContent = t.artist || 'Unknown artist';
+      if (t.source) {
+        var src = document.createElement('span'); src.className = 'src';
+        src.textContent = '  ·  ' + t.source;
+        meta.appendChild(src);
+      }
+      txt.appendChild(title); txt.appendChild(meta);
+      li.appendChild(txt);
+      ul.appendChild(li);
+    }
+
+    function renderScraped(ul, plainUl, tracks){
       ul.innerHTML = '';
-      if(!tracks || !tracks.length){
+      plainUl.innerHTML = '';
+      plainUl.hidden = true;
+      if (!tracks || !tracks.length) {
+        var empty = document.createElement('li');
+        empty.className = 'empty';
+        empty.textContent = '— none —';
+        ul.appendChild(empty);
+        return;
+      }
+      tracks.forEach(function(t, i){
+        if (!t.art) { addPlainRow(plainUl, t); return; }
+        var li = document.createElement('li');
+        li.className = 'pending';
+        li.style.animationDelay = (Math.min(i, 20) * 35) + 'ms';
+        // Eager load (not lazy): a display:none pending tile never intersects
+        // the viewport, so a lazy image would sit unloaded forever.
+        var img = document.createElement('img');
+        img.decoding = 'async';
+        img.alt = (t.title || 'Track') + ' album art';
+        var settled = false;
+        var demote = function(){
+          if (settled) return;
+          settled = true;
+          li.remove();
+          addPlainRow(plainUl, t);
+        };
+        img.onload = function(){
+          if (settled) return;
+          settled = true;
+          li.classList.remove('pending');
+        };
+        img.onerror = demote;
+        setTimeout(demote, 8000);  // CDN hang → text row, never a hollow tile
+        li.appendChild(img);
+        var cap = document.createElement('div'); cap.className = 'cap';
+        var title = document.createElement('span'); title.className = 't';
+        title.textContent = t.title || 'Unknown title';
+        var meta = document.createElement('span'); meta.className = 'a';
+        meta.textContent = t.artist || 'Unknown artist';
+        var src = document.createElement('span'); src.className = 'src';
+        src.textContent = t.source || '';
+        cap.appendChild(title); cap.appendChild(meta);
+        if (t.source) cap.appendChild(src);
+        li.appendChild(cap);
+        ul.appendChild(li);
+        img.src = sized(t.art, 320);
+      });
+    }
+
+    function renderMissed(ul, tracks){
+      ul.innerHTML = '';
+      if (!tracks || !tracks.length) {
         var empty = document.createElement('li');
         empty.className = 'empty';
         empty.textContent = '— none —';
@@ -344,16 +742,29 @@
       }
       tracks.forEach(function(t){
         var li = document.createElement('li');
+        var thumb = document.createElement('div'); thumb.className = 'thumb';
+        if (t.art) {
+          var img = document.createElement('img');
+          img.loading = 'lazy'; img.decoding = 'async';
+          img.alt = (t.title || 'Track') + ' album art';
+          img.onerror = function(){ img.remove(); thumb.appendChild(vinylSVG()); };
+          img.src = sized(t.art, 160);
+          thumb.appendChild(img);
+        } else {
+          thumb.appendChild(vinylSVG());
+        }
+        var txt = document.createElement('div'); txt.className = 'txt';
         var title = document.createElement('span'); title.className = 't';
         title.textContent = t.title || 'Unknown title';
         var meta = document.createElement('span'); meta.className = 'a';
         meta.textContent = t.artist || 'Unknown artist';
-        if(t.source){
+        if (t.source) {
           var src = document.createElement('span'); src.className = 'src';
           src.textContent = '  ·  ' + t.source;
           meta.appendChild(src);
         }
-        li.appendChild(title); li.appendChild(meta);
+        txt.appendChild(title); txt.appendChild(meta);
+        li.appendChild(thumb); li.appendChild(txt);
         ul.appendChild(li);
       });
     }
@@ -363,13 +774,11 @@
       var scraped = t.scraped || [], missed = t.missed || [];
       els.scrapedCount.textContent = scraped.length;
       els.missedCount.textContent = missed.length;
-      renderTracks(els.scrapedList, scraped);
-      renderTracks(els.missedList, missed);
-      // Swap the live progress widgets out for the results page (results-mode hides
-      // the overall row/bar/stats/log so the columns + footer never overlap).
-      els.panel.classList.add('results-mode');
+      renderScraped(els.scrapedList, els.scrapedPlainList, scraped);
+      renderMissed(els.missedList, missed);
+      els.stage.classList.add('results-mode');
       els.results.classList.add('show');
-      if(s.spotifyUri){
+      if (s.spotifyUri) {
         els.openBtn.style.display = '';
         els.openBtn.onclick = function(){ try{ window.location.href = s.spotifyUri; }catch(e){} };
       }
@@ -401,27 +810,43 @@
 
     var finished = false;
     function render(s){
-      // busy overlay — a long blocking step (e.g. the Spotify export) hides the
-      // progress widgets and shows a centered working message so the window
-      // doesn't look frozen during the gap before the results page.
       // subtitle — names the scrape window this run covers
       var lastWeek = s.mode === 'last-week';
       els.subtitle.textContent = lastWeek ? 'Last Week' : 'This Week';
       els.subtitle.classList.toggle('lastweek', lastWeek);
+
+      // artwork wall — covers discovered this run
+      renderWall(s.covers);
+
+      // hero — explicit current-track art wins; while scanning (phase 1) fall
+      // back to the newest wall cover; otherwise keep whatever is showing.
+      var c = s.current || {name:'', detail:'', status:'idle'};
+      var covers = s.covers || [];
+      if (c.art) {
+        setHero(c.art, c.video);
+      } else if (s.phase === 1 && covers.length) {
+        var tail = covers[covers.length - 1];
+        setHero(tail.art, tail.video);
+      } else if (!covers.length && !s.phase) {
+        setHero('', '');
+      }
+
+      // busy overlay — a long blocking step (e.g. the Spotify export handoff)
       var isBusy = !!s.busy && !s.done;
-      els.panel.classList.toggle('busy-mode', isBusy);
+      els.stage.classList.toggle('busy-mode', isBusy);
       if(isBusy){
         els.busyTitle.textContent = s.busyLabel || 'Working…';
         els.busyDetail.textContent = s.busyDetail || '';
       }
+
       // phases — the rail only shows while the run's activities are underway
-      // (hidden before a run starts and again once everything has finished).
       els.phasesBox.classList.toggle('hidden', !(s.phase >= 1) || !!s.done);
       els.phases.forEach(function(el){
         var p = parseInt(el.getAttribute('data-p'),10);
         el.classList.toggle('active', p === s.phase && !s.done);
         el.classList.toggle('done', p < s.phase || (s.done && s.ok));
       });
+
       // overall
       var o = s.overall || {current:0,total:0,label:''};
       els.overallLabel.textContent = o.label || s.phaseLabel || 'Working';
@@ -440,42 +865,69 @@
         els.bar.classList.add('indeterminate');
         els.pct.textContent = '•••';
       }
-      // current
-      var c = s.current || {name:'',detail:'',status:'idle'};
+
+      // current-track meta (hero panel)
       els.curName.textContent = c.name || '';
       els.curDetail.textContent = c.detail || '';
-      var col = STATUS_COLOR[c.status] || 'var(--cyan)';
+      var failed = s.done && !s.ok;
+      var col = failed ? 'var(--err)' : (STATUS_COLOR[c.status] || 'var(--cyan)');
       els.spin.style.background = col; els.spin.style.boxShadow = '0 0 12px ' + col;
+      els.statusWord.textContent = failed ? 'Failed'
+        : (s.done ? 'Complete' : (STATUS_WORD[c.status] || 'Working'));
+      els.statusWord.style.color = failed ? 'var(--err)' : '';
+
       renderStats(s.stats);
       renderLog(s.log);
-      // Keyboard Maestro firings — listed on the completion card so the user
-      // can see exactly which macros ran; when the outcome fires nothing, a
-      // muted note says so. (Arrives after done, so keep it outside the
-      // render-once guard below.)
+
+      // Keyboard Maestro firings — listed on the completion card. (Arrives
+      // after done, so kept outside the render-once guard below.)
       var fired = s.kmMacros || [];
       var kmNote = (!fired.length && s.kmNote) ? s.kmNote : '';
       var kmSig = fired.length + '|' + kmNote;
       if(els.kmFired.getAttribute('data-sig') !== kmSig){
         els.kmFired.setAttribute('data-sig', kmSig);
         els.kmFired.innerHTML = '';
-        fired.forEach(function(n){
+        if(fired.length){
+          var cap = document.createElement('div');
+          cap.className = 'km-cap';
+          cap.textContent = fired.length > 1 ? 'Keyboard Maestro macros fired'
+                                             : 'Last Keyboard Maestro macro fired';
+          els.kmFired.appendChild(cap);
+        }
+        // Entries are {name, uuid} (older progress files: plain strings). With a
+        // uuid, clicking opens the macro in the Keyboard Maestro editor via the
+        // app's native bridge; without the bridge (demo/browser) it's a no-op.
+        fired.forEach(function(entry){
+          var name = (typeof entry === 'string') ? entry : (entry && entry.name) || '';
+          var uuid = (typeof entry === 'string') ? '' : (entry && entry.uuid) || '';
           var d = document.createElement('div');
           d.className = 'km-fired';
-          var k = document.createElement('span');
-          k.className = 'k';
-          k.textContent = '⌨ Keyboard Maestro ▸ ';
-          d.appendChild(k);
-          d.appendChild(document.createTextNode(n));
+          d.textContent = name;
+          if (uuid) {
+            d.classList.add('km-link');
+            d.setAttribute('role', 'button');
+            d.tabIndex = 0;
+            d.title = 'Open this macro in the Keyboard Maestro editor';
+            var openMacro = function(){
+              try { window.webkit.messageHandlers.nmr.postMessage('editMacro:' + uuid); } catch(e){}
+            };
+            d.addEventListener('click', openMacro);
+            d.addEventListener('keydown', function(ev){
+              if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openMacro(); }
+            });
+          }
           els.kmFired.appendChild(d);
         });
         if(kmNote){
           var nd = document.createElement('div');
           nd.className = 'km-fired none';
-          nd.textContent = '⌨ ' + kmNote;
+          nd.textContent = kmNote;
           els.kmFired.appendChild(nd);
         }
       }
-      // done
+
+      // done — success swaps in the artwork-mosaic results page; failure keeps
+      // the hero up and centers the red completion card (no green anywhere).
       if(s.done && !finished){
         finished = true;
         els.doneCard.classList.add('show');
@@ -483,16 +935,19 @@
         els.doneMark.innerHTML = s.ok ? '&check;' : '&times;';
         els.doneMsg.textContent = s.message || (s.ok ? 'Complete' : 'Finished with errors');
         els.spin.style.animation = 'none';
-        // Swap in the scraped-vs-missed results page and leave it up — the user
-        // closes it manually (no auto-dismiss) so there's time to read it.
-        showResults(s);
+        if (s.ok) {
+          showResults(s);
+        } else {
+          els.stage.classList.add('failed-mode');
+        }
       }
     }
 
     var last = '';
     function poll(){
       try{
-        var raw = KM ? KM.GetVariable('NMRProgress') : '';
+        var k = KM();
+        var raw = k ? k.GetVariable('NMRProgress') : '';
         if(raw && raw !== last){
           last = raw;
           render(JSON.parse(raw));
