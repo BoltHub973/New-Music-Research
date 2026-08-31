@@ -79,6 +79,10 @@ cp "${REPO_ROOT}/keyboard-maestro/km_progress.py" "${PIPELINE_DST}/keyboard-maes
 # 5. Icon, if present.
 [ -f "Resources/AppIcon.icns" ] && cp "Resources/AppIcon.icns" "${APP_PATH}/Contents/Resources/AppIcon.icns"
 
+# Native macOS 26 icon (no Tahoe white rim) — see ~/.claude/skills/mac-app-icons
+_icon_ensure="$HOME/.claude/skills/mac-app-icons/scripts/ensure-native-icon.sh"
+[ -x "$_icon_ensure" ] && "$_icon_ensure" "Resources" "${APP_PATH}" || true
+
 # 6. Strip quarantine + ad-hoc sign with entitlements.
 xattr -cr "${APP_PATH}"
 ENTITLEMENTS="Resources/${PRODUCT}.entitlements"
@@ -88,5 +92,15 @@ else
     codesign --force --deep --sign - "${APP_PATH}"
 fi
 
+# Finder icon: stamp the repo's chosen style (Resources/.icon-style = dering) AFTER
+# signing — macOS's own icon slab always paints a light edge ring, and custom icons
+# render literally. The rm -rf above wipes the stamp each build; car stays fallback.
+[ -x "$_icon_ensure" ] && "$_icon_ensure" --stamp "Resources" "${APP_PATH}" || true
+
 echo "✓ Built ${APP_PATH}"
 echo "  Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST_DST}") (${DISPLAY})"
+
+# Debug worktree menu item — standard on every Mac app.
+# Prints nothing once the menu is installed. See ~/.claude/skills/mac-worktree-menu.
+_wtm_check="$HOME/.claude/skills/mac-worktree-menu/check.sh"
+[ -x "$_wtm_check" ] && "$_wtm_check" "$(dirname "$0")" || true
