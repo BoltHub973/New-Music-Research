@@ -104,3 +104,6 @@ echo "  Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString
 # Prints nothing once the menu is installed. See ~/.claude/skills/mac-worktree-menu.
 _wtm_check="$HOME/.claude/skills/mac-worktree-menu/check.sh"
 [ -x "$_wtm_check" ] && "$_wtm_check" "$(dirname "$0")" || true
+
+# Resource guard (10-21-26): fails the build on a NEW effect that keeps the Mac busy; samples a fresh relaunch.
+[ -x "${HOME}/.local/bin/perf-guard-build" ] && { PERF_BUNDLE="${BUNDLE_ID:-}" "${HOME}/.local/bin/perf-guard-build" "$0" || exit 1; }

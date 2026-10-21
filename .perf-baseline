@@ -1,0 +1,6 @@
+{
+ "note": "perf-check: issues known when it was first wired in. They only warn; new ones fail. Fix them with ~/Development/Claude/perf-guard/RECIPES.md; fixed ones drop out by themselves.",
+ "known": [
+  "loop-repaint|keyboard-maestro/progress_window.html|slide"
+ ]
+}
