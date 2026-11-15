@@ -17,6 +17,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
     var onSetWorktreeMenu: ((Bool) -> Void)?
     var onZoomAction: ((String) -> Void)?
     var onRunURL: ((String) -> Void)?
+    var onRunScrape: ((ScrapeMode, String) -> Void)?
 
     init(projectDirProvider: @escaping () -> String, worktreeShownProvider: @escaping () -> Bool) {
         self.projectDirProvider = projectDirProvider
@@ -415,6 +416,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
             if let urlStr = body["url"] as? String {
                 onRunURL?(urlStr)
             }
+        case "runScrape":
+            let modeStr = body["mode"] as? String ?? "this-week"
+            let mode: ScrapeMode = (modeStr == "lastWeek" || modeStr == "last-week") ? .lastWeek : .thisWeek
+            let presetId = body["presetId"] as? String ?? "default"
+            onRunScrape?(mode, presetId)
         default:
             break
         }

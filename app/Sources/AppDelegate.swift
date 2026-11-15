@@ -61,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.handleURL(url)
             }
         }
+        ctrl.onRunScrape = { [weak self] mode, presetId in
+            self?.runScrapeWithPreset(mode: mode, presetId: presetId)
+        }
         return ctrl
     }()
 
@@ -215,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let webVC = WebViewController()
         webVC.projectDirProvider = { [weak self] in self?.pipeline.projectDir ?? (NSHomeDirectory() + "/Development/New Music Research") }
         webVC.onOpenSettings = { [weak self] in self?.openSettings() }
-        webVC.onToggleAppearance = { SharedStore.shared.toggleAppearance() }
+        webVC.onToggleAppearance = { ThemeManager.shared.toggleAppearance() }
         win.contentView = webVC.view
 
         let entry = MainWindowEntry(window: win, webVC: webVC)
@@ -317,17 +320,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Actions
 
-    private func run(mode: ScrapeMode) {
-        let entry = activeEntry ?? createMainWindow(background: false)
+    private func run(mode: ScrapeMode, timestamped: Bool = false, in targetEntry: MainWindowEntry? = nil) {
+        let entry = targetEntry ?? activeEntry ?? createMainWindow(background: false)
         entry.window.title = (mode == .lastWeek) ? "Last Week" : "This Week"
+        entry.window.makeKeyAndOrderFront(nil)
         entry.webVC.openHUD()
         entry.webVC.loadProgressUI()
-        pipeline.start(mode: mode)
+        pipeline.start(mode: mode, timestamped: timestamped)
     }
 
-    @objc private func runAgain()               { run(mode: pipeline.lastMode) }
-    @objc private func scrapeThisWeek()         { run(mode: .thisWeek) }
-    @objc private func scrapeLastWeek()         { run(mode: .lastWeek) }
+    private func runScrapeWithPreset(mode: ScrapeMode, presetId: String) {
+        PlaylistOrderStore.shared.selectPreset(id: presetId, projectDir: pipeline.projectDir)
+        let entry = activeEntry ?? createMainWindow(background: false)
+        entry.window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        checkExistingAndRun(in: entry, mode: mode, askLastWeekOnCancel: false)
+    }
+
+    @objc private func runAgain() {
+        let entry = activeEntry ?? createMainWindow(background: false)
+        checkExistingAndRun(in: entry, mode: pipeline.lastMode, askLastWeekOnCancel: false)
+    }
+
+    @objc private func scrapeThisWeek() {
+        let entry = activeEntry ?? createMainWindow(background: false)
+        checkExistingAndRun(in: entry, mode: .thisWeek, askLastWeekOnCancel: false)
+    }
+
+    @objc private func scrapeLastWeek() {
+        let entry = activeEntry ?? createMainWindow(background: false)
+        checkExistingAndRun(in: entry, mode: .lastWeek, askLastWeekOnCancel: false)
+    }
     @objc private func openSettings()           { settingsController.show(anchor: activeEntry?.window, section: nil, background: false) }
     @objc private func toggleSettings()         { settingsController.toggle(anchor: activeEntry?.window) }
     @objc private func toggleAppearanceAction() { ThemeManager.shared.toggleAppearance() }
@@ -367,14 +390,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Launch Flow (NAGA Confirmation Modal)
 
-    private static let checkingFrame = #"{"busy":true,"busyLabel":"CHECKING SPOTIFY","busyDetail":"Looking for a This Week playlist created today…"}"#
-    private static let deletingFrame = #"{"busy":true,"busyLabel":"CLEARING TODAY'S PLAYLIST","busyDetail":"Deleting the existing This Week playlist from Spotify…"}"#
+    private static let checkingFrame = #"{"busy":true,"busyLabel":"CHECKING SPOTIFY","busyDetail":"Looking for an existing playlist created today…"}"#
+    private static let deletingFrame = #"{"busy":true,"busyLabel":"OVERWRITING PLAYLIST","busyDetail":"Removing the existing Spotify playlist before re-scraping…"}"#
     private static let idleFrame = #"{"busy":false}"#
 
     private func decideLaunchRun(in entry: MainWindowEntry) {
+        checkExistingAndRun(in: entry, mode: .thisWeek, askLastWeekOnCancel: true)
+    }
+
+    private func checkExistingAndRun(in entry: MainWindowEntry, mode: ScrapeMode, askLastWeekOnCancel: Bool) {
+        entry.webVC.openHUD()
         entry.webVC.setPayload(Self.checkingFrame)
 
-        pipeline.runHelper(["check"]) { [weak self, weak entry] output in
+        pipeline.runHelper(["check", "--mode", mode.rawValue]) { [weak self, weak entry] output in
             guard let self = self, let entry = entry else { return }
             let verdict = output.split(separator: "\n").map(String.init)
                 .first { $0.hasPrefix("EXISTS:") || $0 == "NONE" || $0.hasPrefix("CHECK_ERROR:") }
@@ -384,54 +412,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSLog("New Music Research: launch check fell through — %@",
                           verdict.isEmpty ? "no verdict (helper failed?)" : verdict)
                 }
-                self.run(mode: .thisWeek)
+                self.run(mode: mode, timestamped: false, in: entry)
                 return
             }
             let ids = verdict.dropFirst("EXISTS:".count).split(separator: ",").map(String.init)
+            let baseTitle = Self.playlistTitlePreview(mode: mode, timestamped: false)
+            let stampedTitle = Self.playlistTitlePreview(mode: mode, timestamped: true)
+            let modeLabel = (mode == .lastWeek) ? "Last Week" : "This Week"
+            let presetPayload = PlaylistOrderStore.shared.exportPayload(projectDir: self.pipeline.projectDir)
+            let activePresetId = (presetPayload["activePresetId"] as? String) ?? "default"
+            let presets = (presetPayload["presets"] as? [[String: Any]]) ?? []
+            let activePresetName: String = {
+                if activePresetId == "default" { return "Default" }
+                return presets.first(where: { ($0["id"] as? String) == activePresetId })?["name"] as? String ?? "Default"
+            }()
 
-            entry.webVC.askConfirm(
-                title: "Re-scrape This Week?",
-                subtitle: "Today's This Week playlist already exists on Spotify.",
+            entry.webVC.askChoice(
+                title: "Existing \(modeLabel) Playlist Found",
+                subtitle: "A playlist for today already exists on Spotify. Create a timestamped playlist or overwrite the existing one?",
                 tile: "🎵",
                 kind: "warn",
                 facts: [
-                    ["If Yes", "Deletes today's Spotify playlist and scrapes fresh Tidal playlists in left-to-right order."],
-                    ["Matched IDs", ids.joined(separator: ", ")],
-                    ["If No", "Asks whether to run Last Week instead."]
+                    ["Existing Playlist", baseTitle],
+                    ["New Playlist Name", stampedTitle],
+                    ["Playlist Preset", activePresetName],
+                    ["Matched IDs", ids.joined(separator: ", ")]
                 ],
-                yesLabel: "Yes, Re-scrape",
-                noLabel: "No"
-            ) { [weak self, weak entry] yesRescrape in
+                buttons: [
+                    ["value": "cancel", "label": askLastWeekOnCancel ? "Skip (Esc)" : "Cancel (Esc)", "keys": ["n", "esc"]],
+                    ["value": "overwrite", "label": "Overwrite Existing (O)", "danger": true, "keys": ["o"]],
+                    ["value": "create", "label": "Create New (\(stampedTitle)) (↩)", "primary": true, "keys": ["c", "y"]]
+                ]
+            ) { [weak self, weak entry] choice in
                 guard let self = self, let entry = entry else { return }
-                if yesRescrape {
+                if choice == "create" {
+                    self.run(mode: mode, timestamped: true, in: entry)
+                    return
+                }
+                if choice == "overwrite" {
                     entry.webVC.setPayload(Self.deletingFrame)
                     self.pipeline.runHelper(["delete"] + ids) { _ in
-                        self.run(mode: .thisWeek)
+                        self.run(mode: mode, timestamped: false, in: entry)
                     }
                     return
                 }
-                entry.webVC.askConfirm(
-                    title: "Run Last Week Instead?",
-                    subtitle: "Scrape tracks added to the Tidal playlists last calendar week.",
-                    tile: "🟠",
-                    kind: "warn",
-                    facts: [
-                        ["Window", "Last Calendar Week (Mon → Mon)"],
-                        ["Playlist", "🟠 DX LAST WEEK"],
-                        ["If No", "Restores your previous run's results without scraping."]
-                    ],
-                    yesLabel: "Yes, Last Week",
-                    noLabel: "No"
-                ) { [weak self] yesLastWeek in
-                    guard let self = self else { return }
-                    if yesLastWeek {
-                        self.run(mode: .lastWeek)
-                    } else {
-                        self.showPreviousResults()
+                if askLastWeekOnCancel {
+                    entry.webVC.askConfirm(
+                        title: "Run Last Week Instead?",
+                        subtitle: "Scrape tracks added to the Tidal playlists last calendar week.",
+                        tile: "🟠",
+                        kind: "warn",
+                        facts: [
+                            ["Window", "Last Calendar Week (Mon → Mon)"],
+                            ["Playlist", "🟠 DX LAST WEEK"],
+                            ["If No", "Restores your previous run's results without scraping."]
+                        ],
+                        yesLabel: "Yes, Last Week",
+                        noLabel: "No"
+                    ) { [weak self] yesLastWeek in
+                        guard let self = self else { return }
+                        if yesLastWeek {
+                            self.checkExistingAndRun(in: entry, mode: .lastWeek, askLastWeekOnCancel: false)
+                        } else {
+                            self.showPreviousResults()
+                        }
                     }
+                } else {
+                    entry.webVC.setPayload(Self.idleFrame)
                 }
             }
         }
+    }
+
+    private static func playlistTitlePreview(mode: ScrapeMode, timestamped: Bool, date: Date = Date()) -> String {
+        let dfDate = DateFormatter()
+        dfDate.locale = Locale(identifier: "en_US_POSIX")
+        dfDate.dateFormat = "MM-dd-yy"
+        let prefix = (mode == .lastWeek) ? "🟠 DX LAST WEEK" : "🪁 DX"
+        let base = "\(prefix) \(dfDate.string(from: date))"
+        guard timestamped else { return base }
+        let dfTime = DateFormatter()
+        dfTime.locale = Locale(identifier: "en_US_POSIX")
+        dfTime.dateFormat = "h:mma"
+        return "\(base) at \(dfTime.string(from: date).lowercased())"
     }
 
     private func showPreviousResults() {

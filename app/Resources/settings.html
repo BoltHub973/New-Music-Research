@@ -172,6 +172,7 @@ html, body {
 }
 
 .nav-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -199,9 +200,23 @@ html, body {
   border-style: dashed;
   border-color: var(--accent);
 }
-.nav-row.drag-over {
-  border-top: 2px solid var(--accent);
+.nav-row.drop-before::before,
+.nav-row.drop-after::after,
+.playlist-row.drop-before::before,
+.playlist-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow, var(--accent));
+  pointer-events: none;
+  z-index: 10;
 }
+.nav-row.drop-before::before { top: -5px; }
+.nav-row.drop-after::after   { bottom: -5px; }
 
 .drag-grip {
   color: var(--muted);
@@ -922,6 +937,7 @@ html, body {
   gap: 8px;
 }
 .playlist-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -931,8 +947,23 @@ html, body {
   background: var(--surface-2);
   transition: border-color 0.12s ease, opacity 0.12s ease;
 }
-.playlist-row.dragging { opacity: 0.45; }
-.playlist-row.drag-over { border-color: var(--accent); }
+.playlist-row.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.playlist-row.drop-before::before { top: -6px; }
+.playlist-row.drop-after::after   { bottom: -6px; }
+.scrape-run-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
 .playlist-grip {
   cursor: grab;
   color: var(--muted);
@@ -1217,6 +1248,109 @@ function formatComboDisplay(combo) {
   return out + keyPretty;
 }
 
+function installEdgeDragReorder({ container, rowSelector, idAttr, getDraggedId, setDraggedId, getOrderedIds, onCommit }) {
+  if (!container) return;
+  let lastTarget = null;
+
+  function clearIndicators() {
+    container.querySelectorAll(rowSelector).forEach(r => r.classList.remove("drop-before", "drop-after"));
+    lastTarget = null;
+  }
+
+  function resolveInsertion(clientY) {
+    const rows = Array.from(container.querySelectorAll(rowSelector));
+    if (!rows.length) return null;
+    const ids = getOrderedIds();
+    const draggedId = getDraggedId();
+    const fromIdx = ids.indexOf(draggedId);
+    if (fromIdx < 0) return null;
+
+    let bestRow = rows[rows.length - 1];
+    let pos = "after";
+    let hoveredIdx = rows.length - 1;
+
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (clientY < mid) {
+        bestRow = rows[i];
+        pos = "before";
+        hoveredIdx = i;
+        break;
+      }
+      if (clientY <= rect.bottom || i === rows.length - 1) {
+        bestRow = rows[i];
+        pos = "after";
+        hoveredIdx = i;
+        if (i === rows.length - 1 || clientY < rows[i + 1].getBoundingClientRect().top) {
+          break;
+        }
+      }
+    }
+
+    const rawInsertIdx = (pos === "after") ? hoveredIdx + 1 : hoveredIdx;
+    if (rawInsertIdx === fromIdx || rawInsertIdx === fromIdx + 1) {
+      return { noop: true, fromIdx, rawInsertIdx, row: bestRow, pos };
+    }
+    return { noop: false, fromIdx, rawInsertIdx, row: bestRow, pos };
+  }
+
+  container.querySelectorAll(rowSelector).forEach(row => {
+    const itemId = row.getAttribute(idAttr);
+    row.addEventListener("dragstart", (e) => {
+      setDraggedId(itemId);
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", itemId);
+    });
+    row.addEventListener("dragend", () => {
+      setDraggedId(null);
+      container.querySelectorAll(rowSelector).forEach(r => r.classList.remove("dragging"));
+      clearIndicators();
+    });
+  });
+
+  if (container.dataset.edgeWired) return;
+  container.dataset.edgeWired = "1";
+
+  container.addEventListener("dragover", (e) => {
+    if (!getDraggedId()) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const info = resolveInsertion(e.clientY);
+    clearIndicators();
+    if (info && !info.noop) {
+      info.row.classList.add(info.pos === "before" ? "drop-before" : "drop-after");
+      lastTarget = info;
+    }
+  });
+
+  container.addEventListener("dragleave", (e) => {
+    if (!container.contains(e.relatedTarget)) {
+      clearIndicators();
+    }
+  });
+
+  container.addEventListener("drop", async (e) => {
+    if (!getDraggedId()) return;
+    e.preventDefault();
+    const info = resolveInsertion(e.clientY) || lastTarget;
+    clearIndicators();
+    if (!info || info.noop) return;
+
+    const order = [...getOrderedIds()];
+    const draggedId = getDraggedId();
+    const fromIdx = order.indexOf(draggedId);
+    if (fromIdx < 0) return;
+    const finalIdx = fromIdx < info.rawInsertIdx ? info.rawInsertIdx - 1 : info.rawInsertIdx;
+    if (finalIdx === fromIdx) return;
+
+    const [moved] = order.splice(fromIdx, 1);
+    order.splice(finalIdx, 0, moved);
+    await onCommit(order, moved, finalIdx + 1);
+  });
+}
+
 function renderRail() {
   const list = document.getElementById("navList");
   const validOrder = STATE.sectionOrder.filter(id => SECTION_META[id]);
@@ -1247,38 +1381,21 @@ function renderRail() {
       document.getElementById("settingsSearchClear").classList.remove("visible");
       selectSection(secId);
     });
+  });
 
-    row.addEventListener("dragstart", (e) => {
-      dragSectionId = secId;
-      row.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", secId);
-    });
-    row.addEventListener("dragend", () => {
-      dragSectionId = null;
-      list.querySelectorAll(".nav-row").forEach(r => r.classList.remove("dragging", "drag-over"));
-    });
-    row.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (dragSectionId && dragSectionId !== secId) {
-        row.classList.add("drag-over");
-      }
-    });
-    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
-    row.addEventListener("drop", (e) => {
-      e.preventDefault();
-      row.classList.remove("drag-over");
-      if (!dragSectionId || dragSectionId === secId) return;
-      const order = [...STATE.sectionOrder];
-      const fromIdx = order.indexOf(dragSectionId);
-      const toIdx = order.indexOf(secId);
-      if (fromIdx < 0 || toIdx < 0) return;
-      order.splice(fromIdx, 1);
-      order.splice(toIdx, 0, dragSectionId);
+  installEdgeDragReorder({
+    container: list,
+    rowSelector: ".nav-row",
+    idAttr: "data-section",
+    getDraggedId: () => dragSectionId,
+    setDraggedId: (v) => { dragSectionId = v; },
+    getOrderedIds: () => STATE.sectionOrder,
+    onCommit: (order) => {
       STATE.sectionOrder = order;
       post({ type: "sectionOrder", order });
       renderRail();
-    });
+      showToast("Saved sidebar order");
+    }
   });
 }
 
@@ -1529,6 +1646,13 @@ function renderPlaylistsSection() {
       <div class="preset-bar">
         <div class="preset-pills">${presetPills}</div>
         <div class="btn-group">${presetActions}</div>
+      </div>
+      <div class="scrape-run-bar">
+        <span class="card-desc" style="margin:0">Run a new scrape right now using <strong>${isDefault ? "Default" : escapeHTML(preset.name)}</strong>:</span>
+        <div class="btn-group">
+          <button class="btn btn-sm" id="runScrapeLastWeekBtn" data-run-scrape="lastWeek" ${items.length ? "" : "disabled"}>Run Last Week</button>
+          <button class="btn btn-primary btn-sm" id="runScrapeThisWeekBtn" data-run-scrape="thisWeek" ${items.length ? "" : "disabled"}>▶ Run This Week</button>
+        </div>
       </div>
     </div>
 
@@ -1822,7 +1946,22 @@ function wireDynamicHandlers() {
   // Playlist Order & Presets
   document.querySelectorAll("[data-select-preset]").forEach(btn => {
     btn.addEventListener("click", () => {
-      post({ type: "selectPreset", id: btn.dataset.selectPreset });
+      const id = btn.dataset.selectPreset;
+      const presetName = id === "default"
+        ? "Default"
+        : ((STATE.playlistOrder?.presets || []).find(p => p.id === id)?.name || "Preset");
+      post({ type: "selectPreset", id });
+      showToast("Saved active preset: " + presetName);
+    });
+  });
+
+  document.querySelectorAll("[data-run-scrape]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const data = activePlaylistPresetData();
+      const presetLabel = data.isDefault ? "Default" : data.preset.name;
+      const mode = btn.dataset.runScrape;
+      showToast(`Starting ${mode === "lastWeek" ? "Last Week" : "This Week"} scrape (${presetLabel})…`);
+      post({ type: "runScrape", mode, presetId: data.activeId });
     });
   });
 
@@ -1838,7 +1977,7 @@ function wireDynamicHandlers() {
       });
       if (name) {
         post({ type: "createPreset", name, urls: data.items.map(p => p.url) });
-        showToast("Created preset " + name);
+        showToast("Saved new preset: " + name);
       }
     });
   }
@@ -1855,7 +1994,7 @@ function wireDynamicHandlers() {
       });
       if (name) {
         post({ type: "createPreset", name, urls: data.items.map(p => p.url) });
-        showToast("Created preset " + name);
+        showToast("Saved custom preset: " + name);
       }
     });
   }
@@ -1873,7 +2012,7 @@ function wireDynamicHandlers() {
       });
       if (name) {
         post({ type: "renamePreset", id: data.preset.id, name });
-        showToast("Renamed preset to " + name);
+        showToast("Saved preset name: " + name);
       }
     });
   }
@@ -1894,7 +2033,7 @@ function wireDynamicHandlers() {
       });
       if (ok) {
         post({ type: "updatePresetOrder", id: data.preset.id, urls: data.defaults.map(p => p.url) });
-        showToast("Reset " + data.preset.name + " to Default order");
+        showToast("Saved Default order to " + data.preset.name);
       }
     });
   }
@@ -1912,13 +2051,14 @@ function wireDynamicHandlers() {
       });
       if (ok) {
         post({ type: "deletePreset", id: data.preset.id });
-        showToast("Deleted preset " + data.preset.name);
+        showToast("Deleted " + data.preset.name + " · Active: Default");
       }
     });
   }
 
-  async function applyNewPlaylistSequence(urlsOrdered) {
+  async function applyNewPlaylistSequence(urlsOrdered, movedName = "", newRank = null) {
     const data = activePlaylistPresetData();
+    const posNote = (movedName && newRank) ? `${movedName} → #${newRank}` : "Updated sequence";
     if (data.isDefault) {
       const name = await askNameModal({
         title: "Save Reorder as New Custom Preset",
@@ -1928,10 +2068,11 @@ function wireDynamicHandlers() {
       });
       if (name) {
         post({ type: "createPreset", name, urls: urlsOrdered });
-        showToast("Saved custom preset " + name);
+        showToast(`Saved ${posNote} in "${name}"`);
       }
     } else if (data.preset) {
       post({ type: "updatePresetOrder", id: data.preset.id, urls: urlsOrdered });
+      showToast(`Saved ${posNote} in "${data.preset.name}"`);
     }
   }
 
@@ -1943,45 +2084,28 @@ function wireDynamicHandlers() {
       const urls = data.items.map(p => p.url);
       const targetIdx = dir === "up" ? idx - 1 : idx + 1;
       if (targetIdx < 0 || targetIdx >= urls.length) return;
+      const movedName = data.items[idx]?.name || "";
       const [moved] = urls.splice(idx, 1);
       urls.splice(targetIdx, 0, moved);
-      await applyNewPlaylistSequence(urls);
+      await applyNewPlaylistSequence(urls, movedName, targetIdx + 1);
     });
   });
 
-  document.querySelectorAll(".playlist-row").forEach(row => {
-    const rowUrl = row.dataset.playlistUrl;
-    row.addEventListener("dragstart", (e) => {
-      dragPlaylistUrl = rowUrl;
-      row.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", rowUrl);
-    });
-    row.addEventListener("dragend", () => {
-      dragPlaylistUrl = null;
-      document.querySelectorAll(".playlist-row").forEach(r => r.classList.remove("dragging", "drag-over"));
-    });
-    row.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (dragPlaylistUrl && dragPlaylistUrl !== rowUrl) {
-        row.classList.add("drag-over");
+  const playlistContainer = document.getElementById("playlistOrderList");
+  if (playlistContainer) {
+    installEdgeDragReorder({
+      container: playlistContainer,
+      rowSelector: ".playlist-row",
+      idAttr: "data-playlist-url",
+      getDraggedId: () => dragPlaylistUrl,
+      setDraggedId: (v) => { dragPlaylistUrl = v; },
+      getOrderedIds: () => activePlaylistPresetData().items.map(p => p.url),
+      onCommit: async (urlsOrdered, movedUrl, newRank) => {
+        const movedName = activePlaylistPresetData().items.find(p => p.url === movedUrl)?.name || "";
+        await applyNewPlaylistSequence(urlsOrdered, movedName, newRank);
       }
     });
-    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
-    row.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      row.classList.remove("drag-over");
-      if (!dragPlaylistUrl || dragPlaylistUrl === rowUrl) return;
-      const data = activePlaylistPresetData();
-      const urls = data.items.map(p => p.url);
-      const fromIdx = urls.indexOf(dragPlaylistUrl);
-      const toIdx = urls.indexOf(rowUrl);
-      if (fromIdx < 0 || toIdx < 0) return;
-      urls.splice(fromIdx, 1);
-      urls.splice(toIdx, 0, dragPlaylistUrl);
-      await applyNewPlaylistSequence(urls);
-    });
-  });
+  }
 
   document.querySelectorAll("[data-open-url]").forEach(btn => {
     btn.addEventListener("click", () => {

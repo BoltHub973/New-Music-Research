@@ -29,14 +29,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import export_to_spotify as ex  # reuses .env loading, auth + retries, MODES
 
 
-def today_this_week_name():
-    return ex.MODES["this-week"]["title"].format(
-        date=datetime.datetime.now().strftime("%m-%d-%y"))
+def today_playlist_name(mode="this-week"):
+    return ex.format_playlist_name(mode, timestamped=False)
 
 
-def find_todays_playlists(sp, user_id):
-    """Return ids of the user's own playlists named exactly like today's run."""
-    name = today_this_week_name()
+def find_todays_playlists(sp, user_id, mode="this-week"):
+    """Return ids of the user's own playlists named exactly like today's run for mode."""
+    name = today_playlist_name(mode)
     ids = []
     offset = 0
     while True:
@@ -67,6 +66,11 @@ def delete_playlist(sp, playlist_id):
 
 def main():
     action = sys.argv[1] if len(sys.argv) > 1 else "check"
+    mode = "this-week"
+    if action == "check" and "--mode" in sys.argv[2:]:
+        idx = sys.argv.index("--mode")
+        if idx + 1 < len(sys.argv) and sys.argv[idx + 1] in ex.MODES:
+            mode = sys.argv[idx + 1]
 
     if not ex.CLIENT_ID or not ex.CLIENT_SECRET:
         print("CHECK_ERROR:missing Spotify credentials in "
@@ -87,7 +91,7 @@ def main():
         return
 
     if action == "check":
-        ids = find_todays_playlists(sp, user_id)
+        ids = find_todays_playlists(sp, user_id, mode=mode)
         print(("EXISTS:" + ",".join(ids)) if ids else "NONE")
     elif action == "delete":
         for pid in sys.argv[2:]:

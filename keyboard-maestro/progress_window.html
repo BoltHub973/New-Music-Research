@@ -610,7 +610,7 @@
   .naga-facts{width:100%; border-collapse:collapse; margin:14px 0 22px; font-size:.88rem;}
   .naga-facts td{padding:9px 10px; border-bottom:1px solid var(--border-soft); vertical-align:top; overflow-wrap:anywhere;}
   .naga-facts td:first-child{width:165px; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:.78rem; text-transform:uppercase;}
-  .naga-modal-actions{display:flex; justify-content:flex-end; gap:12px;}
+  .naga-modal-actions{display:flex; justify-content:flex-end; flex-wrap:wrap; gap:12px;}
 
   .app-toast{
     position:fixed; right:24px; bottom:24px; z-index:995;
@@ -810,7 +810,7 @@
         </div>
       </div>
       <table class="naga-facts" id="nagaModalFacts"></table>
-      <div class="naga-modal-actions">
+      <div class="naga-modal-actions" id="nagaModalActions">
         <button id="nagaModalNo" class="btn-mini" type="button">No (N / Esc)</button>
         <button id="nagaModalYes" class="primary" type="button">Yes (Y / ↩)</button>
       </div>
@@ -1326,30 +1326,51 @@
 
     var modalState = {
       resolver: null,
-      externalPending: false
+      externalPending: false,
+      isChoice: false,
+      buttons: null
     };
 
     function askConfirm(opts){
       return new Promise(function(resolve){
         modalState.resolver = resolve;
         modalState.externalPending = !!opts.external;
+        modalState.isChoice = Array.isArray(opts.buttons) && opts.buttons.length > 0;
+        modalState.buttons = modalState.isChoice ? opts.buttons : null;
+
         var bd = document.getElementById('nagaModal');
         var tile = document.getElementById('nagaModalTile');
         var titleEl = document.getElementById('nagaModalTitle');
         var subEl = document.getElementById('nagaModalSub');
         var factsEl = document.getElementById('nagaModalFacts');
-        var yesBtn = document.getElementById('nagaModalYes');
-        var noBtn = document.getElementById('nagaModalNo');
+        var actionsEl = document.getElementById('nagaModalActions');
 
         tile.textContent = opts.tile || '⚠️';
         tile.className = 'naga-modal-tile ' + (opts.kind || 'warn');
         titleEl.textContent = opts.title || 'Confirm';
         subEl.textContent = opts.subtitle || '';
-        yesBtn.textContent = (opts.yesLabel || 'Yes') + ' (Y / ↩)';
-        noBtn.textContent = (opts.noLabel || 'No') + ' (N / Esc)';
         factsEl.innerHTML = (opts.facts || []).map(function(row){
           return '<tr><td>' + esc(row[0]) + '</td><td>' + esc(row[1]) + '</td></tr>';
         }).join('');
+
+        if (modalState.isChoice) {
+          actionsEl.innerHTML = opts.buttons.map(function(b){
+            var cls = b.primary ? 'primary' : (b.danger ? 'btn-danger-sm' : 'btn-mini');
+            return '<button class="' + cls + '" type="button" data-choice="' + esc(b.value) + '">' + esc(b.label) + '</button>';
+          }).join('');
+          actionsEl.querySelectorAll('[data-choice]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              resolveChoice(btn.getAttribute('data-choice'));
+            });
+          });
+        } else {
+          actionsEl.innerHTML =
+            '<button id="nagaModalNo" class="btn-mini" type="button">' + esc((opts.noLabel || 'No') + ' (N / Esc)') + '</button>' +
+            '<button id="nagaModalYes" class="primary" type="button">' + esc((opts.yesLabel || 'Yes') + ' (Y / ↩)') + '</button>';
+          document.getElementById('nagaModalYes').addEventListener('click', function(){ resolveConfirm(true); });
+          document.getElementById('nagaModalNo').addEventListener('click', function(){ resolveConfirm(false); });
+        }
+
         bd.classList.add('open');
       });
     }
@@ -1362,10 +1383,28 @@
       var fn = modalState.resolver;
       modalState.resolver = null;
       modalState.externalPending = false;
+      modalState.isChoice = false;
+      modalState.buttons = null;
       if (wasExt) {
         postHost('confirmResponse:' + (answer ? 'true' : 'false'));
       }
       if (fn) fn(!!answer);
+    }
+
+    function resolveChoice(value){
+      var bd = document.getElementById('nagaModal');
+      if (!bd.classList.contains('open')) return;
+      bd.classList.remove('open');
+      var wasExt = modalState.externalPending;
+      var fn = modalState.resolver;
+      modalState.resolver = null;
+      modalState.externalPending = false;
+      modalState.isChoice = false;
+      modalState.buttons = null;
+      if (wasExt) {
+        postHost('choiceResponse:' + value);
+      }
+      if (fn) fn(value);
     }
 
     document.getElementById('nagaModalYes').addEventListener('click', function(){ resolveConfirm(true); });
@@ -1651,6 +1690,24 @@
       if (document.getElementById('nagaModal').classList.contains('open')) {
         e.preventDefault();
         var k = e.key.toLowerCase();
+        if (modalState.isChoice && Array.isArray(modalState.buttons)) {
+          if (e.key === 'Escape') {
+            resolveChoice('cancel');
+            return;
+          }
+          if (e.key === 'Enter') {
+            var defBtn = modalState.buttons.find(function(b){ return b.primary; }) || modalState.buttons[0];
+            if (defBtn) resolveChoice(defBtn.value);
+            return;
+          }
+          var keyed = modalState.buttons.find(function(b){
+            return Array.isArray(b.keys) && b.keys.indexOf(k) >= 0;
+          });
+          if (keyed) {
+            resolveChoice(keyed.value);
+          }
+          return;
+        }
         if (k === 'y' || e.key === 'Enter') resolveConfirm(true);
         else if (k === 'n' || e.key === 'Escape') resolveConfirm(false);
         return;

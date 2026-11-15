@@ -125,13 +125,13 @@ final class Pipeline {
     private(set) var lastMode: ScrapeMode = .thisWeek
 
     /// Clear any stale progress, then spawn the pipeline and begin tailing.
-    func start(mode: ScrapeMode = .thisWeek) {
+    func start(mode: ScrapeMode = .thisWeek, timestamped: Bool = false) {
         stop()
         lastMode = mode
         try? FileManager.default.removeItem(at: Self.progressURL)
         lastPayload = ""
         startPolling()
-        spawn(mode: mode)
+        spawn(mode: mode, timestamped: timestamped)
     }
 
     func stop() {
@@ -189,14 +189,18 @@ final class Pipeline {
 
     // MARK: - Subprocess
 
-    private func spawn(mode: ScrapeMode) {
+    private func spawn(mode: ScrapeMode, timestamped: Bool) {
         let p = Process()
         // Code from the bundle (scriptsDir), data in the project dir (cwd): the
         // scripts resolve their imports/assets next to themselves, and read/write
         // playlists.json, .env, token caches and output folders relative to cwd.
         p.executableURL = URL(fileURLWithPath: pythonPath)
         let script = (scriptsDir as NSString).appendingPathComponent("track_playlists.py")
-        p.arguments = [script, "--mode", mode.rawValue]
+        var args = [script, "--mode", mode.rawValue]
+        if timestamped {
+            args.append("--timestamped")
+        }
+        p.arguments = args
         p.currentDirectoryURL = URL(fileURLWithPath: projectDir)
 
         // GUI apps inherit a minimal PATH; augment it so any PATH-resolved helpers the

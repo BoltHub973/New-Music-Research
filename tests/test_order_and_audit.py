@@ -313,5 +313,27 @@ class PlaylistPresetOrderTests(unittest.TestCase):
             self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Default")
 
 
+class PlaylistNameFormatTests(unittest.TestCase):
+    def test_timestamped_and_base_playlist_names(self):
+        dt_pm = datetime.datetime(2026, 11, 14, 22, 5)
+        self.assertEqual(
+            export_to_spotify.format_playlist_name("this-week", now=dt_pm, timestamped=False),
+            "🪁 DX 11-14-26",
+        )
+        self.assertEqual(
+            export_to_spotify.format_playlist_name("this-week", now=dt_pm, timestamped=True),
+            "🪁 DX 11-14-26 at 10:05pm",
+        )
+        dt_am = datetime.datetime(2026, 11, 14, 9, 5)
+        self.assertEqual(
+            export_to_spotify.format_playlist_name("this-week", now=dt_am, timestamped=True),
+            "🪁 DX 11-14-26 at 9:05am",
+        )
+        self.assertEqual(
+            export_to_spotify.format_playlist_name("last-week", now=dt_pm, timestamped=True),
+            "🟠 DX LAST WEEK 11-14-26 at 10:05pm",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

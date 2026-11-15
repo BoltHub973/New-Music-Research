@@ -55,6 +55,16 @@ MODES = {
     "last-week": {"title": "🟠 DX LAST WEEK {date}", "theme": "orange"},
 }
 
+
+def format_playlist_name(mode_key, now=None, timestamped=False):
+    dt = now or datetime.datetime.now()
+    base = MODES[mode_key]["title"].format(date=dt.strftime("%m-%d-%y"))
+    if not timestamped:
+        return base
+    hour = str(int(dt.strftime("%I")))
+    time_part = f"{hour}:{dt.strftime('%M')}{dt.strftime('%p').lower()}"
+    return f"{base} at {time_part}"
+
 def get_credentials():
     """Prompts user for credentials if not found in env."""
     global CLIENT_ID, CLIENT_SECRET
@@ -231,6 +241,8 @@ def main():
     parser.add_argument("--stdin", action="store_true", help="Read tracks JSON array from stdin")
     parser.add_argument("--mode", choices=sorted(MODES), default="this-week",
                         help="Scrape window the snapshot represents — controls playlist title & artwork theme")
+    parser.add_argument("--timestamped", action="store_true",
+                        help="Append local time to the playlist name (e.g. '🪁 DX 11-14-26 at 10:05pm')")
     args = parser.parse_args()
 
     mode = MODES[args.mode]
@@ -409,7 +421,7 @@ def main():
     now = datetime.datetime.now()
     current_date = now.strftime("%m-%d-%y")
     current_timestamp = now.strftime("%m-%d-%y__%I.%M.%S %p")
-    playlist_name = mode["title"].format(date=current_date)
+    playlist_name = format_playlist_name(args.mode, now=now, timestamped=args.timestamped)
     playlist_id = None
     tracks_added = 0
     audit_status = "0/0 verified"

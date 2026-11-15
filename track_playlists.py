@@ -313,6 +313,8 @@ def main():
     parser.add_argument("--mode", choices=("this-week", "last-week"), default="this-week",
                         help="Date-added window to scrape (this-week = rolling 7 days, "
                              "last-week = previous calendar week)")
+    parser.add_argument("--timestamped", action="store_true",
+                        help="Create a distinct timestamped playlist name instead of reusing today's base title")
     args = parser.parse_args()
     window_start, window_end, window_desc = scrape_window(args.mode)
 
@@ -393,8 +395,11 @@ def main():
             # inside the app), NOT in the cwd — the cwd is the project/data dir.
             exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "export_to_spotify.py")
+            cmd = [sys.executable, exporter, "--stdin", "--mode", args.mode]
+            if args.timestamped:
+                cmd.append("--timestamped")
             result = subprocess.run(
-                [sys.executable, exporter, "--stdin", "--mode", args.mode],
+                cmd,
                 input=json.dumps(unique_tracks, ensure_ascii=False),
                 check=True,
                 stdout=subprocess.PIPE,

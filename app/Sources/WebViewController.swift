@@ -20,6 +20,7 @@ final class WebViewController: NSViewController {
 
     private(set) var isReady = false
     private var confirmCompletion: ((Bool) -> Void)?
+    private var choiceCompletion: ((String) -> Void)?
 
     /// The most recent progress frame, re-applied once the page finishes loading so a
     /// frame that arrives before the document is ready (or across a reload) isn't lost.
@@ -171,13 +172,12 @@ final class WebViewController: NSViewController {
         noLabel: String = "No",
         completion: @escaping (Bool) -> Void
     ) {
-        // Complete any superseded modal safely before opening the next one.
         if let prev = confirmCompletion {
             confirmCompletion = nil
             prev(false)
         }
         confirmCompletion = completion
-        let payload: [String: Any] = [
+        dispatchModalPayload([
             "title": title,
             "subtitle": subtitle,
             "tile": tile,
@@ -185,11 +185,47 @@ final class WebViewController: NSViewController {
             "facts": facts,
             "yesLabel": yesLabel,
             "noLabel": noLabel,
-        ]
+        ]) { [weak self] in
+            if let fn = self?.confirmCompletion {
+                self?.confirmCompletion = nil
+                fn(false)
+            }
+        }
+    }
+
+    func askChoice(
+        title: String,
+        subtitle: String,
+        tile: String = "🎵",
+        kind: String = "warn",
+        facts: [[String]],
+        buttons: [[String: Any]],
+        completion: @escaping (String) -> Void
+    ) {
+        if let prev = choiceCompletion {
+            choiceCompletion = nil
+            prev("cancel")
+        }
+        choiceCompletion = completion
+        dispatchModalPayload([
+            "title": title,
+            "subtitle": subtitle,
+            "tile": tile,
+            "kind": kind,
+            "facts": facts,
+            "buttons": buttons,
+        ]) { [weak self] in
+            if let fn = self?.choiceCompletion {
+                self?.choiceCompletion = nil
+                fn("cancel")
+            }
+        }
+    }
+
+    private func dispatchModalPayload(_ payload: [String: Any], onEncodeFailure: () -> Void) {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else {
-            confirmCompletion = nil
-            completion(false)
+            onEncodeFailure()
             return
         }
         let invoke = { [weak self] in
@@ -317,6 +353,12 @@ extension WebViewController: WKScriptMessageHandler {
             if let fn = confirmCompletion {
                 confirmCompletion = nil
                 fn(ans)
+            }
+        } else if body.hasPrefix("choiceResponse:") {
+            let choice = String(body.dropFirst("choiceResponse:".count))
+            if let fn = choiceCompletion {
+                choiceCompletion = nil
+                fn(choice)
             }
         } else if body.hasPrefix("copyText:") {
             let text = String(body.dropFirst("copyText:".count))
