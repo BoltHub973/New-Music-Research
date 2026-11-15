@@ -332,8 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func runScrapeWithPreset(mode: ScrapeMode, presetId: String) {
         PlaylistOrderStore.shared.selectPreset(id: presetId, projectDir: pipeline.projectDir)
         let entry = activeEntry ?? createMainWindow(background: false)
-        entry.window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        settingsController.closeWindow()
         checkExistingAndRun(in: entry, mode: mode, askLastWeekOnCancel: false)
     }
 
@@ -399,6 +398,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkExistingAndRun(in entry: MainWindowEntry, mode: ScrapeMode, askLastWeekOnCancel: Bool) {
+        if ProcessInfo.processInfo.environment["NMR_BACKGROUND_LAUNCH"] != "1" {
+            entry.window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         entry.webVC.openHUD()
         entry.webVC.setPayload(Self.checkingFrame)
 
@@ -430,8 +433,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             entry.webVC.askChoice(
                 title: "Existing \(modeLabel) Playlist Found",
                 subtitle: "A playlist for today already exists on Spotify. Create a timestamped playlist or overwrite the existing one?",
-                tile: "🎵",
-                kind: "warn",
+                tile: "music",
+                kind: "accent",
                 facts: [
                     ["Existing Playlist", baseTitle],
                     ["New Playlist Name", stampedTitle],
@@ -460,7 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     entry.webVC.askConfirm(
                         title: "Run Last Week Instead?",
                         subtitle: "Scrape tracks added to the Tidal playlists last calendar week.",
-                        tile: "🟠",
+                        tile: "lastweek",
                         kind: "warn",
                         facts: [
                             ["Window", "Last Calendar Week (Mon → Mon)"],

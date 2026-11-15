@@ -732,10 +732,34 @@ html, body {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  color: var(--danger);
   background: var(--danger-dim);
-  border: 1px solid rgba(255, 92, 114, 0.35);
+  border: 1px solid rgba(255, 92, 114, 0.38);
+  box-shadow: 0 0 18px rgba(255, 92, 114, 0.14);
   flex-shrink: 0;
+}
+.naga-modal-tile svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+.naga-modal-tile.accent {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.14);
+}
+.btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+@keyframes nmrSpin {
+  to { transform: rotate(360deg); }
+}
+.nmr-spin {
+  animation: nmrSpin 0.85s linear infinite;
 }
 .naga-modal-title {
   margin: 0;
@@ -1068,7 +1092,7 @@ html, body {
 <div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true">
   <div class="naga-modal">
     <div class="naga-modal-head">
-      <div class="naga-modal-tile" id="confirmTile">🗑️</div>
+      <div class="naga-modal-tile" id="confirmTile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5h15M9 4.5h6l.8 3H8.2l.8-3Z"/><path d="M7 7.5l.9 12.2h8.2l.9-12.2"/><line x1="10.3" y1="11.2" x2="10.3" y2="16.2"/><line x1="13.7" y1="11.2" x2="13.7" y2="16.2"/></svg></div>
       <div>
         <h2 class="naga-modal-title" id="confirmTitle">Confirm Action</h2>
         <p class="naga-modal-sub" id="confirmSubtitle"></p>
@@ -1086,7 +1110,7 @@ html, body {
 <div class="modal-backdrop" id="nameModal" role="dialog" aria-modal="true">
   <div class="naga-modal">
     <div class="naga-modal-head">
-      <div class="naga-modal-tile" id="nameModalTile" style="background:var(--accent-dim);border-color:var(--accent-border)">🎛️</div>
+      <div class="naga-modal-tile accent" id="nameModalTile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.1" fill="var(--surface)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.1" fill="var(--surface)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="10.5" cy="17" r="2.1" fill="var(--surface)"/></svg></div>
       <div>
         <h2 class="naga-modal-title" id="nameModalTitle">New Preset</h2>
         <p class="naga-modal-sub" id="nameModalSubtitle"></p>
@@ -1443,7 +1467,7 @@ function renderAppearanceSection() {
   const nameDisplay = th.nameDisplay || "custom";
 
   const errorHTML = th.error
-    ? `<div class="theme-error-banner">⚠️ ${escapeHTML(th.error)}</div>`
+    ? `<div class="theme-error-banner">${nagaIconSVG("warn")} <span>${escapeHTML(th.error)}</span></div>`
     : "";
 
   const swatchCards = listed.length
@@ -1651,7 +1675,7 @@ function renderPlaylistsSection() {
         <span class="card-desc" style="margin:0">Run a new scrape right now using <strong>${isDefault ? "Default" : escapeHTML(preset.name)}</strong>:</span>
         <div class="btn-group">
           <button class="btn btn-sm" id="runScrapeLastWeekBtn" data-run-scrape="lastWeek" ${items.length ? "" : "disabled"}>Run Last Week</button>
-          <button class="btn btn-primary btn-sm" id="runScrapeThisWeekBtn" data-run-scrape="thisWeek" ${items.length ? "" : "disabled"}>▶ Run This Week</button>
+          <button class="btn btn-primary btn-sm" id="runScrapeThisWeekBtn" data-run-scrape="thisWeek" ${items.length ? "" : "disabled"}>${nagaIconSVG("play")} Run This Week</button>
         </div>
       </div>
     </div>
@@ -1894,7 +1918,7 @@ function wireDynamicHandlers() {
       const ok = await askConfirm({
         title: "Clear All Scrape & Missed Log History?",
         subtitle: "This permanently removes saved runs from the in-app log.",
-        tile: "🗑️",
+        tile: "trash",
         facts: [
           ["Saved runs", `${STATE.runCount} run(s)`],
           ["File", STATE.storePath],
@@ -1960,7 +1984,9 @@ function wireDynamicHandlers() {
       const data = activePlaylistPresetData();
       const presetLabel = data.isDefault ? "Default" : data.preset.name;
       const mode = btn.dataset.runScrape;
-      showToast(`Starting ${mode === "lastWeek" ? "Last Week" : "This Week"} scrape (${presetLabel})…`);
+      document.querySelectorAll("[data-run-scrape]").forEach(b => { b.disabled = true; });
+      btn.innerHTML = `${nagaIconSVG("spinner")} Checking Spotify…`;
+      showToast(`Checking Spotify (${presetLabel})…`);
       post({ type: "runScrape", mode, presetId: data.activeId });
     });
   });
@@ -2046,7 +2072,7 @@ function wireDynamicHandlers() {
       const ok = await askConfirm({
         title: `Delete Preset "${data.preset.name}"?`,
         subtitle: "Your Default preset will remain untouched and become active.",
-        tile: "🗑️",
+        tile: "trash",
         facts: [["Preset", data.preset.name]]
       });
       if (ok) {
@@ -2226,12 +2252,34 @@ function updateScrollFade() {
   fade.classList.toggle("visible", remaining > 24);
 }
 
-function askConfirm({ title, subtitle, tile = "⚠️", facts = [] }) {
+function nagaIconSVG(kind) {
+  const map = { "🎵": "music", "⚠️": "warn", "⚠": "warn", "🗑️": "trash", "🗑": "trash", "🎛️": "preset", "🎛": "preset", "🟠": "lastweek" };
+  const id = map[String(kind || "warn").trim()] || String(kind || "warn").trim();
+  const c = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  if (id === "music") {
+    return `<svg ${c}><polygon points="12 2.4 20.4 7.2 20.4 16.8 12 21.6 3.6 16.8 3.6 7.2" opacity="0.45"/><line x1="7.5" y1="15.2" x2="7.5" y2="10.8"/><line x1="10.5" y1="17" x2="10.5" y2="7"/><line x1="13.5" y1="15.5" x2="13.5" y2="9"/><line x1="16.5" y1="14.2" x2="16.5" y2="11.2"/></svg>`;
+  }
+  if (id === "trash") {
+    return `<svg ${c}><path d="M4.5 7.5h15M9 4.5h6l.8 3H8.2l.8-3Z"/><path d="M7 7.5l.9 12.2h8.2l.9-12.2"/><line x1="10.3" y1="11.2" x2="10.3" y2="16.2"/><line x1="13.7" y1="11.2" x2="13.7" y2="16.2"/></svg>`;
+  }
+  if (id === "preset") {
+    return `<svg ${c}><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.1" fill="var(--surface)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.1" fill="var(--surface)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="10.5" cy="17" r="2.1" fill="var(--surface)"/></svg>`;
+  }
+  if (id === "play") {
+    return `<svg ${c}><polygon points="7 5 19 12 7 19 7 5"/></svg>`;
+  }
+  if (id === "spinner") {
+    return `<svg ${c} class="nmr-spin"><path d="M12 3a9 9 0 1 0 9 9"/></svg>`;
+  }
+  return `<svg ${c}><path d="M12 3.4 21 19a1 1 0 0 1-.86 1.5H3.86A1 1 0 0 1 3 19L12 3.4Z"/><line x1="12" y1="9.4" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+}
+
+function askConfirm({ title, subtitle, tile = "warn", facts = [] }) {
   return new Promise(resolve => {
     confirmResolver = resolve;
     document.getElementById("confirmTitle").textContent = title;
     document.getElementById("confirmSubtitle").textContent = subtitle || "";
-    document.getElementById("confirmTile").textContent = tile;
+    document.getElementById("confirmTile").innerHTML = nagaIconSVG(tile);
     document.getElementById("confirmFacts").innerHTML = facts.map(([k, v]) =>
       `<tr><td>${escapeHTML(k)}</td><td>${escapeHTML(v)}</td></tr>`
     ).join("");

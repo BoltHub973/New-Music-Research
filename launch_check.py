@@ -21,9 +21,12 @@ Machine-readable output goes to stdout only; run it from the project/data dir
 (cwd), exactly like the pipeline itself.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import os
 import sys
+
+import spotipy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import export_to_spotify as ex  # reuses .env loading, auth + retries, MODES
@@ -33,21 +36,43 @@ def today_playlist_name(mode="this-week"):
     return ex.format_playlist_name(mode, timestamped=False)
 
 
-def find_todays_playlists(sp, user_id, mode="this-week"):
+def _fetch_playlists_page(access_token, offset):
+    client = spotipy.Spotify(auth=access_token, requests_timeout=ex.REQUEST_TIMEOUT)
+    return ex.spotify_call(client.current_user_playlists, limit=50, offset=offset) or {}
+
+
+def find_todays_playlists(sp, user_id, mode="this-week", access_token=None, first_page=None):
     """Return ids of the user's own playlists named exactly like today's run for mode."""
     name = today_playlist_name(mode)
+    page0 = first_page if first_page is not None else ex.spotify_call(
+        sp.current_user_playlists, limit=50, offset=0
+    ) or {}
+    pages = [page0]
+    total = min(int(page0.get("total") or 0), 1000)
+    remaining_offsets = list(range(50, total, 50))
+    if remaining_offsets:
+        token = access_token
+        if not token and getattr(sp, "auth_manager", None):
+            tok_info = sp.auth_manager.get_cached_token()
+            token = tok_info.get("access_token") if tok_info else None
+        if token:
+            with ThreadPoolExecutor(max_workers=min(8, len(remaining_offsets))) as pool:
+                pages.extend(pool.map(lambda off: _fetch_playlists_page(token, off), remaining_offsets))
+        else:
+            for off in remaining_offsets:
+                pages.append(ex.spotify_call(sp.current_user_playlists, limit=50, offset=off) or {})
+
     ids = []
-    offset = 0
-    while True:
-        page = ex.spotify_call(sp.current_user_playlists, limit=50, offset=offset)
-        items = (page or {}).get("items") or []
-        for pl in items:
+    seen = set()
+    for page in pages:
+        for pl in (page or {}).get("items") or []:
             if (pl and pl.get("name") == name
                     and (pl.get("owner") or {}).get("id") == user_id):
-                ids.append(pl["id"])
-        if len(items) < 50 or offset >= 950:
-            return ids
-        offset += 50
+                pid = pl.get("id")
+                if pid and pid not in seen:
+                    seen.add(pid)
+                    ids.append(pid)
+    return ids
 
 
 def delete_playlist(sp, playlist_id):
@@ -82,17 +107,32 @@ def main():
         auth = sp.auth_manager
         # validate_token() returns a usable token or None; it refreshes an
         # expired one non-interactively but never opens the consent flow.
-        if not auth.validate_token(auth.cache_handler.get_cached_token()):
+        tok_info = auth.validate_token(auth.cache_handler.get_cached_token())
+        if not tok_info:
             print("CHECK_ERROR:re-authorization needed — the run will open the consent page")
             return
-        user_id = ex.spotify_call(sp.me)["id"]
+        access_token = tok_info.get("access_token") if isinstance(tok_info, dict) else None
     except Exception as e:
         print(f"CHECK_ERROR:auth failed: {e}")
         return
 
     if action == "check":
-        ids = find_todays_playlists(sp, user_id, mode=mode)
-        print(("EXISTS:" + ",".join(ids)) if ids else "NONE")
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                me_fut = pool.submit(
+                    lambda: ex.spotify_call(
+                        spotipy.Spotify(auth=access_token, requests_timeout=ex.REQUEST_TIMEOUT).me
+                    )
+                ) if access_token else pool.submit(lambda: ex.spotify_call(sp.me))
+                p0_fut = pool.submit(_fetch_playlists_page, access_token, 0) if access_token else pool.submit(
+                    lambda: ex.spotify_call(sp.current_user_playlists, limit=50, offset=0) or {}
+                )
+                user_id = me_fut.result()["id"]
+                page0 = p0_fut.result()
+            ids = find_todays_playlists(sp, user_id, mode=mode, access_token=access_token, first_page=page0)
+            print(("EXISTS:" + ",".join(ids)) if ids else "NONE")
+        except Exception as e:
+            print(f"CHECK_ERROR:auth failed: {e}")
     elif action == "delete":
         for pid in sys.argv[2:]:
             try:

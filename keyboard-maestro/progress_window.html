@@ -600,11 +600,28 @@
   .naga-modal-head{display:flex; align-items:center; gap:16px; margin-bottom:16px;}
   .naga-modal-tile{
     width:52px; height:52px; border-radius:14px; flex:0 0 52px;
-    display:grid; place-items:center; font-size:1.5rem;
-    background:var(--cyan-glow); border:1px solid var(--cyan);
+    display:grid; place-items:center; color:var(--cyan);
+    background:rgba(0,240,255,.1); border:1px solid rgba(0,240,255,.45);
+    box-shadow:0 0 22px rgba(0,240,255,.18), inset 0 0 12px rgba(0,240,255,.1);
   }
-  .naga-modal-tile.warn{background:rgba(245,166,35,.16); border-color:var(--warn);}
-  .naga-modal-tile.danger{background:rgba(255,51,102,.16); border-color:var(--err);}
+  .naga-modal-tile svg{
+    width:26px; height:26px; display:block;
+    filter:drop-shadow(0 0 8px currentColor);
+  }
+  .naga-modal-tile.warn{
+    color:var(--warn);
+    background:rgba(245,166,35,.12); border-color:rgba(245,166,35,.55);
+    box-shadow:0 0 20px rgba(245,166,35,.16), inset 0 0 10px rgba(245,166,35,.08);
+  }
+  .naga-modal-tile.danger{
+    color:var(--err);
+    background:rgba(255,51,102,.14); border-color:rgba(255,51,102,.55);
+    box-shadow:0 0 20px rgba(255,51,102,.18), inset 0 0 10px rgba(255,51,102,.08);
+  }
+  .hdr-btn svg{
+    width:17px; height:17px; display:block;
+    filter:drop-shadow(0 0 6px currentColor);
+  }
   .naga-modal-title{margin:0; font-size:1.3rem; font-weight:700; color:var(--text);}
   .naga-modal-sub{margin:4px 0 0; font-size:.92rem; color:var(--muted); overflow-wrap:anywhere;}
   .naga-facts{width:100%; border-collapse:collapse; margin:14px 0 22px; font-size:.88rem;}
@@ -672,8 +689,8 @@
             <span>Scrape &amp; Missed Log</span>
             <span class="hdr-kbd" id="logShortcutHint">⌘L</span>
           </button>
-          <button id="appearanceBtn" class="hdr-btn icon-only" type="button" title="Switch to Light Appearance (⌘⇧L)" aria-label="Toggle Appearance">☀️</button>
-          <button id="settingsNavBtn" class="hdr-btn icon-only" type="button" title="Settings (⌘,)" aria-label="Settings">⚙️</button>
+          <button id="appearanceBtn" class="hdr-btn icon-only" type="button" title="Switch to Light Appearance (⌘⇧L)" aria-label="Toggle Appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg></button>
+          <button id="settingsNavBtn" class="hdr-btn icon-only" type="button" title="Settings (⌘,)" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2.6 19.8 7.1 19.8 16.9 12 21.4 4.2 16.9 4.2 7.1"/><circle cx="12" cy="12" r="3.2"/><path d="M12 6.4v2.1M12 15.5v2.1M6.4 12h2.1M15.5 12h2.1"/></svg></button>
         </div>
       </div>
     </header>
@@ -803,7 +820,7 @@
   <div class="naga-modal-backdrop" id="nagaModal" role="dialog" aria-modal="true">
     <div class="naga-modal-card">
       <div class="naga-modal-head">
-        <div class="naga-modal-tile" id="nagaModalTile">🎵</div>
+        <div class="naga-modal-tile" id="nagaModalTile"></div>
         <div>
           <h2 class="naga-modal-title" id="nagaModalTitle">Confirm</h2>
           <p class="naga-modal-sub" id="nagaModalSub"></p>
@@ -1135,8 +1152,17 @@
         setHero('', '');
       }
 
-      // busy overlay — a long blocking step (e.g. the Spotify export handoff)
+      // busy overlay — a long blocking step (e.g. Spotify check or export handoff)
+      // Must always clear any prior completed/failed results view so the wait
+      // indicator is immediately visible on repeat runs too.
       var isBusy = !!s.busy && !s.done;
+      if (isBusy || isActiveRun) {
+        finished = false;
+        els.stage.classList.remove('results-mode', 'failed-mode');
+        els.results.classList.remove('show');
+        els.doneCard.classList.remove('show', 'fail');
+        els.openBtn.style.display = 'none';
+      }
       els.stage.classList.toggle('busy-mode', isBusy);
       if(isBusy){
         els.busyTitle.textContent = s.busyLabel || 'Working…';
@@ -1324,6 +1350,35 @@
       shortcuts: {}
     };
 
+    function nagaIconSVG(kind){
+      var k = String(kind || 'warn').trim();
+      var map = { '🎵': 'music', '⚠️': 'warn', '⚠': 'warn', '🗑️': 'trash', '🗑': 'trash', '🎛️': 'preset', '🎛': 'preset', '🟠': 'lastweek', '☀️': 'sun', '☀': 'sun', '🌙': 'moon', '⚙️': 'settings', '⚙': 'settings' };
+      var id = map[k] || k;
+      var common = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+      if (id === 'music') {
+        return '<svg ' + common + '><polygon points="12 2.4 20.4 7.2 20.4 16.8 12 21.6 3.6 16.8 3.6 7.2" opacity="0.45"/><line x1="7.5" y1="15.2" x2="7.5" y2="10.8"/><line x1="10.5" y1="17" x2="10.5" y2="7"/><line x1="13.5" y1="15.5" x2="13.5" y2="9"/><line x1="16.5" y1="14.2" x2="16.5" y2="11.2"/></svg>';
+      }
+      if (id === 'trash') {
+        return '<svg ' + common + '><path d="M4.5 7.5h15M9 4.5h6l.8 3H8.2l.8-3Z"/><path d="M7 7.5l.9 12.2h8.2l.9-12.2"/><line x1="10.3" y1="11.2" x2="10.3" y2="16.2"/><line x1="13.7" y1="11.2" x2="13.7" y2="16.2"/></svg>';
+      }
+      if (id === 'lastweek') {
+        return '<svg ' + common + '><path d="M4.6 12a7.4 7.4 0 1 1 2.2 5.2"/><polyline points="4 8.2 4.6 12.2 8.6 11.6"/><polyline points="12 8.2 12 12.2 14.8 13.8"/></svg>';
+      }
+      if (id === 'preset') {
+        return '<svg ' + common + '><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.1" fill="var(--surface, #0b0e14)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.1" fill="var(--surface, #0b0e14)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="10.5" cy="17" r="2.1" fill="var(--surface, #0b0e14)"/></svg>';
+      }
+      if (id === 'sun') {
+        return '<svg ' + common + '><circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>';
+      }
+      if (id === 'moon') {
+        return '<svg ' + common + '><path d="M19.5 14.4A7.4 7.4 0 0 1 9.6 4.5a7.4 7.4 0 1 0 9.9 9.9Z"/><path d="M16.5 4.8v2.8M15.1 6.2h2.8"/></svg>';
+      }
+      if (id === 'settings') {
+        return '<svg ' + common + '><polygon points="12 2.6 19.8 7.1 19.8 16.9 12 21.4 4.2 16.9 4.2 7.1"/><circle cx="12" cy="12" r="3.2"/><path d="M12 6.4v2.1M12 15.5v2.1M6.4 12h2.1M15.5 12h2.1"/></svg>';
+      }
+      return '<svg ' + common + '><path d="M12 3.4 21 19a1 1 0 0 1-.86 1.5H3.86A1 1 0 0 1 3 19L12 3.4Z"/><line x1="12" y1="9.4" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>';
+    }
+
     var modalState = {
       resolver: null,
       externalPending: false,
@@ -1333,6 +1388,7 @@
 
     function askConfirm(opts){
       return new Promise(function(resolve){
+        opts = opts || {};
         modalState.resolver = resolve;
         modalState.externalPending = !!opts.external;
         modalState.isChoice = Array.isArray(opts.buttons) && opts.buttons.length > 0;
@@ -1345,7 +1401,7 @@
         var factsEl = document.getElementById('nagaModalFacts');
         var actionsEl = document.getElementById('nagaModalActions');
 
-        tile.textContent = opts.tile || '⚠️';
+        tile.innerHTML = nagaIconSVG(opts.tile || 'warn');
         tile.className = 'naga-modal-tile ' + (opts.kind || 'warn');
         titleEl.textContent = opts.title || 'Confirm';
         subEl.textContent = opts.subtitle || '';
@@ -1486,7 +1542,7 @@
         var ok = await askConfirm({
           title: 'Delete This Log Run?',
           subtitle: 'Removes this run from the in-app Scrape & Missed Log.',
-          tile: '🗑️',
+          tile: 'trash',
           kind: 'danger',
           facts: [
             ['Playlist', cur.playlistName || '—'],
@@ -1609,10 +1665,10 @@
       var btn = document.getElementById('appearanceBtn');
       var kbd = (logState.shortcuts && logState.shortcuts.toggleAppearance) || '⌘⇧L';
       if (m === 'dark') {
-        btn.textContent = '☀️';
+        btn.innerHTML = nagaIconSVG('sun');
         btn.title = 'Switch to Light Appearance (' + kbd + ')';
       } else {
-        btn.textContent = '🌙';
+        btn.innerHTML = nagaIconSVG('moon');
         btn.title = 'Switch to Dark Appearance (' + kbd + ')';
       }
     }
@@ -1670,7 +1726,7 @@
       var ok = await askConfirm({
         title: 'Clear All Scrape & Missed Log History?',
         subtitle: 'This permanently deletes every saved run from the in-app log.',
-        tile: '🗑️',
+        tile: 'trash',
         kind: 'danger',
         facts: [
           ['Runs to delete', String(logState.runs.length)],

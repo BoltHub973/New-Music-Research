@@ -312,6 +312,92 @@ class PlaylistPresetOrderTests(unittest.TestCase):
             )
             self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Default")
 
+            # 4) Exact Swift PlaylistOrderStore schema ("playlists": [{"name": ..., "url": ...}])
+            swift_store_src = (REPO_ROOT / "app/Sources/PlaylistOrderStore.swift").read_text(encoding="utf-8")
+            self.assertIn('"playlists": playlists.map', swift_store_src)
+            pr_path.write_text(
+                json.dumps(
+                    {
+                        "activePresetId": "swift-1",
+                        "defaultPlaylists": canonical,
+                        "presets": [
+                            {
+                                "id": "swift-1",
+                                "name": "Ladies First",
+                                "playlists": [
+                                    {"name": "Gamma", "url": "https://tidal.com/playlist/gamma"},
+                                    {"name": "Beta", "url": "https://tidal.com/playlist/beta"},
+                                    {"name": "Alpha", "url": "https://tidal.com/playlist/alpha"},
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            swift_loaded = track_playlists.load_playlists(str(pl_path), presets_file=str(pr_path))
+            self.assertEqual([p["name"] for p in swift_loaded], ["Gamma", "Beta", "Alpha"])
+            self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Ladies First")
+
+    def test_playlist_order_verification_runs_and_blocks_wrong_order(self):
+        ordered_playlists = [
+            {"name": "Women of Hip-Hop", "url": "https://tidal.com/playlist/w"},
+            {"name": "Viral Hype", "url": "https://tidal.com/playlist/v"},
+            {"name": "Rap Bars & Melodies", "url": "https://tidal.com/playlist/r"},
+        ]
+        good_tracks = [
+            {"Title": "Track W1", "Artist": "A", "Source Playlist": "Women of Hip-Hop"},
+            {"Title": "Track V1", "Artist": "B", "Source Playlist": "Viral Hype"},
+            {"Title": "Track R1", "Artist": "C", "Source Playlist": "Rap Bars & Melodies"},
+        ]
+        self.assertTrue(
+            track_playlists.verify_sequence_matches_playlists(good_tracks, ordered_playlists, preset_name="Ladies First")
+        )
+
+        # Wrong order (e.g. accidental fallback to Default) MUST fail loudly
+        bad_tracks = [
+            {"Title": "Track R1", "Artist": "C", "Source Playlist": "Rap Bars & Melodies"},
+            {"Title": "Track W1", "Artist": "A", "Source Playlist": "Women of Hip-Hop"},
+        ]
+        with self.assertRaises(RuntimeError):
+            track_playlists.verify_sequence_matches_playlists(bad_tracks, ordered_playlists, preset_name="Ladies First")
+
+        # Exporter pre-export order guard runs before publishing and exits 1 on wrong sequence
+        fake_sp = _FakeSpotifyClient({})
+        out = io.StringIO()
+        with patch.object(export_to_spotify, "get_credentials", return_value=True), \
+             patch.object(export_to_spotify, "authenticate", return_value=(fake_sp, "test-user")), \
+             patch(
+                 "sys.argv",
+                 [
+                     "export_to_spotify.py",
+                     "--stdin",
+                     "--preset-name",
+                     "Ladies First",
+                     "--expected-sources-json",
+                     json.dumps(["Women of Hip-Hop", "Viral Hype", "Rap Bars & Melodies"]),
+                 ],
+             ), \
+             patch("sys.stdin", io.StringIO(json.dumps(bad_tracks))), \
+             patch("sys.stdout", out):
+            with self.assertRaises(SystemExit) as ctx:
+                export_to_spotify.main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(fake_sp.playlists, {})
+
+    def test_naga_ui_avoids_generic_apple_emojis_and_preserves_busy_reset(self):
+        banned_ui_emojis = ["🎵", "⚠️", "🗑️", "🎛️", "⚙️", "☀️", "🌙"]
+        for rel in ("keyboard-maestro/progress_window.html", "app/Resources/settings.html"):
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+            # Strip legacy compatibility keys inside nagaIconSVG's input map before checking rendered chrome
+            chrome_only = "\n".join(line for line in text.splitlines() if "const map = {" not in line and "var map = {" not in line)
+            for em in banned_ui_emojis:
+                self.assertNotIn(em, chrome_only, f"{rel} still renders generic emoji {em!r} instead of a NAGA SVG icon")
+
+        hud_html = (REPO_ROOT / "keyboard-maestro/progress_window.html").read_text(encoding="utf-8")
+        self.assertIn("els.stage.classList.remove('results-mode', 'failed-mode')", hud_html)
+        self.assertIn("nagaIconSVG(", hud_html)
+
 
 class PlaylistNameFormatTests(unittest.TestCase):
     def test_timestamped_and_base_playlist_names(self):

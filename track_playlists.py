@@ -112,19 +112,43 @@ def _load_canonical_playlists(filename="playlists.json"):
 
 def reconcile_playlist_order(canonical_playlists, ordered_urls):
     """Order canonical playlists according to ordered_urls, appending any new entries at the end."""
-    by_url = {item.get("url"): item for item in canonical_playlists if item.get("url")}
+    by_url = {}
+    for item in canonical_playlists:
+        u = (item.get("url") or "").strip()
+        if u:
+            by_url[u] = item
     ordered = []
     seen = set()
-    for url in (ordered_urls or []):
+    for raw_url in (ordered_urls or []):
+        url = (raw_url or "").strip()
         if url in by_url and url not in seen:
             ordered.append(by_url[url])
             seen.add(url)
     for item in canonical_playlists:
-        url = item.get("url")
+        url = (item.get("url") or "").strip()
         if url and url not in seen:
             ordered.append(item)
             seen.add(url)
     return ordered
+
+
+def _extract_preset_urls(preset):
+    """Extract ordered URLs from a preset serialized by Swift (`playlists`) or legacy (`order`)."""
+    urls = []
+    for entry in (preset.get("playlists") or []):
+        if isinstance(entry, dict):
+            u = (entry.get("url") or "").strip()
+            if u:
+                urls.append(u)
+        elif isinstance(entry, str) and entry.strip():
+            urls.append(entry.strip())
+    if urls:
+        return urls
+    return [
+        u.strip()
+        for u in (preset.get("order") or [])
+        if isinstance(u, str) and u.strip()
+    ]
 
 
 def _resolve_active_preset(presets_file=None):
@@ -159,8 +183,39 @@ def load_playlists(filename="playlists.json", presets_file=None):
     preset = _resolve_active_preset(presets_file=presets_file)
     if not preset:
         return canonical
-    ordered_urls = preset.get("order") or []
+    ordered_urls = _extract_preset_urls(preset)
     return reconcile_playlist_order(canonical, ordered_urls)
+
+
+def verify_sequence_matches_playlists(tracks, ordered_playlists, preset_name="Default"):
+    """Fail loudly if deduplicated tracks do not follow the expected playlist order."""
+    rank_by_name = {}
+    for idx, pl in enumerate(ordered_playlists or []):
+        name = (pl.get("name") or "").strip() if isinstance(pl, dict) else str(pl).strip()
+        if name and name not in rank_by_name:
+            rank_by_name[name] = idx
+    if not rank_by_name or not tracks:
+        return True
+
+    max_rank = -1
+    last_source = ""
+    for i, track in enumerate(tracks):
+        src = (track.get("Source Playlist") or "").strip()
+        if not src:
+            continue
+        if src not in rank_by_name:
+            raise RuntimeError(
+                f"Preset order check failed ({preset_name}): unknown source playlist {src!r} at position {i + 1}"
+            )
+        r = rank_by_name[src]
+        if r < max_rank:
+            raise RuntimeError(
+                f"Preset order check failed ({preset_name}): track {i + 1} ({track.get('Title', '?')}) "
+                f"from {src!r} appeared after {last_source!r}"
+            )
+        max_rank = r
+        last_source = src
+    return True
 
 def _login_print(msg):
     """Surface Tidal login-flow messages (the approval link) in both UIs."""
@@ -327,7 +382,9 @@ def main():
         km.finish(ok=False, message="playlists.json not found or empty")
         return
 
-    km.log(f"Playlist preset: {active_preset_name()} ({len(playlists)} playlists)")
+    preset_name = active_preset_name()
+    ui.info(f"Using playlist preset: [{ui.PRIMARY}]{preset_name}[/] ({len(playlists)} playlists)")
+    km.log(f"Playlist preset: {preset_name} ({len(playlists)} playlists)")
 
     all_tracks = []
     playlist_created = False   # gates the end-of-run KM macro
@@ -367,14 +424,24 @@ def main():
         km.current("Dedupe", f"{len(all_tracks)} recent matches found", "working")
 
         # Deduplicate while preserving the exact left-to-right order of playlists in
-        # playlists.json and newest-first Date Added track order within each playlist.
+        # the active preset and newest-first Date Added track order within each playlist.
         unique_tracks = dedupe_tracks(all_tracks)
+        try:
+            verify_sequence_matches_playlists(unique_tracks, playlists, preset_name=preset_name)
+            ui.ok(f"Verified track sequence matches preset: [{ui.PRIMARY}]{preset_name}[/]")
+            km.log(f"Verified preset order: {preset_name}")
+        except Exception as ord_err:
+            ui.err(str(ord_err))
+            km.log(str(ord_err))
+            km.no_macros_fired("preset order check failed")
+            km.finish(ok=False, message=str(ord_err))
+            return
 
         dupes = len(all_tracks) - len(unique_tracks)
-        ui.ok(f"{len(unique_tracks)} unique tracks in Tidal playlist order "
+        ui.ok(f"{len(unique_tracks)} unique tracks in preset playlist order "
               f"[{ui.MUTED}]({dupes} duplicate{'s' if dupes != 1 else ''} removed)[/]")
         km.stats(recent=len(all_tracks), unique=len(unique_tracks), duplicates=dupes)
-        km.log(f"{len(unique_tracks)} unique tracks in Tidal URL order ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
+        km.log(f"{len(unique_tracks)} unique tracks in {preset_name} order ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
 
         # ── PHASE 3 — Hand off to the Spotify exporter ───────────────────────
         ui.phase(3, 3, "EXPORT TO SPOTIFY")
@@ -395,7 +462,13 @@ def main():
             # inside the app), NOT in the cwd — the cwd is the project/data dir.
             exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "export_to_spotify.py")
-            cmd = [sys.executable, exporter, "--stdin", "--mode", args.mode]
+            expected_sources = [p.get("name", "") for p in playlists if p.get("name")]
+            cmd = [
+                sys.executable, exporter, "--stdin",
+                "--mode", args.mode,
+                "--preset-name", preset_name,
+                "--expected-sources-json", json.dumps(expected_sources, ensure_ascii=False),
+            ]
             if args.timestamped:
                 cmd.append("--timestamped")
             result = subprocess.run(

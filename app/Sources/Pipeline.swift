@@ -155,6 +155,7 @@ final class Pipeline {
         p.currentDirectoryURL = URL(fileURLWithPath: projectDir)
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "")
+        env["NMR_PRESETS_FILE"] = PlaylistOrderStore.shared.presetsURL.path
         p.environment = env
 
         let out = Pipe()
@@ -207,6 +208,7 @@ final class Pipeline {
         // pipeline shells out to (open, osascript, …) resolve. Python itself is absolute.
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "")
+        env["NMR_PRESETS_FILE"] = PlaylistOrderStore.shared.presetsURL.path
         // Fire the "Open Results" KM macro at the end of the run, like nmr_run.sh did.
         // KM_MACRO_NAME rides along so the pipeline can name the macro in the HUD.
         let macro = resultMacroUUID

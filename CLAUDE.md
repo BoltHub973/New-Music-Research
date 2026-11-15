@@ -42,3 +42,11 @@
   removed at Adrian's request (2026-07-10) because it could only ever report
   failure. Don't re-add pinning code or "couldn't pin" UI unless Spotify ships
   an official endpoint.
+- **Always show a visible loading state on every wait period (2026-11-14):** any
+  action that spawns a helper or waits on network/subprocess work (`check`,
+  `delete`, scrape, export) must immediately surface an active loading overlay
+  or button spinner — and clear `.results-mode` / `.failed-mode` in
+  `progress_window.html` so `.busy-card` is never hidden over a prior run.
+- **NAGA Futuristic icons only (2026-11-14):** UI chrome (modal tiles, header
+  buttons, alert banners) must use crisp geometric SVG HUD icons via
+  `nagaIconSVG(...)` instead of generic system emojis (`🎵`, `⚠️`, `🗑️`, etc.).

@@ -230,6 +230,37 @@ def audit_and_repair_playlist(sp, playlist_id, expected_uris):
     return len(repaired_uris), True
 
 
+def verify_source_order(tracks, expected_sources, preset_name="Default"):
+    """Verify input tracks follow the expected source-playlist sequence before publishing."""
+    rank_by_name = {}
+    for idx, name in enumerate(expected_sources or []):
+        clean = (name or "").strip()
+        if clean and clean not in rank_by_name:
+            rank_by_name[clean] = idx
+    if not rank_by_name or not tracks:
+        return True
+
+    max_rank = -1
+    last_source = ""
+    for idx, track in enumerate(tracks):
+        src = (track.get("Source Playlist") or "").strip()
+        if not src:
+            continue
+        if src not in rank_by_name:
+            raise RuntimeError(
+                f"Playlist order check failed ({preset_name}): unexpected source {src!r} at track {idx + 1}"
+            )
+        r = rank_by_name[src]
+        if r < max_rank:
+            raise RuntimeError(
+                f"Playlist order check failed ({preset_name}): track {idx + 1} "
+                f"({track.get('Title', '?')}) from {src!r} appeared after {last_source!r}"
+            )
+        max_rank = r
+        last_source = src
+    return True
+
+
 def main():
     # Inherit the live HUD state the pipeline built up (log, stats, phase) so we
     # can keep it animating with real export progress instead of a frozen spinner.
@@ -243,6 +274,10 @@ def main():
                         help="Scrape window the snapshot represents — controls playlist title & artwork theme")
     parser.add_argument("--timestamped", action="store_true",
                         help="Append local time to the playlist name (e.g. '🪁 DX 11-14-26 at 10:05pm')")
+    parser.add_argument("--preset-name", default="Default",
+                        help="Name of the active Playlist Order preset used to generate these tracks")
+    parser.add_argument("--expected-sources-json", default="",
+                        help="JSON array of source playlist names in expected preset order")
     args = parser.parse_args()
 
     mode = MODES[args.mode]
@@ -295,6 +330,21 @@ def main():
         return
 
     ui.ok(f"Loaded [bold {ui.PRIMARY}]{len(tracks_to_search)}[/] tracks from snapshot")
+
+    if args.expected_sources_json:
+        try:
+            expected_sources = json.loads(args.expected_sources_json)
+        except Exception as e:
+            ui.err(f"Invalid --expected-sources-json payload: {e}")
+            sys.exit(1)
+        try:
+            verify_source_order(tracks_to_search, expected_sources, preset_name=args.preset_name)
+            ui.ok(f"Pre-export order check passed · Preset: [{ui.PRIMARY}]{args.preset_name}[/]")
+            km.log(f"Pre-export order verified ({args.preset_name})")
+        except Exception as ord_err:
+            ui.err(str(ord_err))
+            km.log(str(ord_err))
+            sys.exit(1)
 
     # 4. Search and Collect URIs
     track_uris = []
@@ -542,6 +592,7 @@ def main():
 
     ui.summary("BROADCAST COMPLETE", {
         "Playlist": playlist_name,
+        "Preset": args.preset_name,
         "Tracks added": tracks_added,
         "Order audit": audit_status if track_uris else "—",
         "Omitted": len(omitted),

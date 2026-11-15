@@ -165,7 +165,7 @@ final class WebViewController: NSViewController {
     func askConfirm(
         title: String,
         subtitle: String,
-        tile: String = "⚠️",
+        tile: String = "warn",
         kind: String = "warn",
         facts: [[String]],
         yesLabel: String = "Yes",
@@ -196,7 +196,7 @@ final class WebViewController: NSViewController {
     func askChoice(
         title: String,
         subtitle: String,
-        tile: String = "🎵",
+        tile: String = "music",
         kind: String = "warn",
         facts: [[String]],
         buttons: [[String: Any]],
