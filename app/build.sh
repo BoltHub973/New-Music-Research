@@ -19,6 +19,9 @@ if [ "${1:-}" = "--relaunch" ]; then
     RELAUNCH=1
 fi
 
+# 0. Verify Python pipeline ordering & audit guards before building.
+/usr/bin/python3 -m unittest discover -s "${REPO_ROOT}/tests" -v
+
 # 1. Compile BEFORE touching /Applications so a failed build leaves the existing app intact.
 cd "${SOURCE_DIR}"
 swift build -c release --product "${PRODUCT}"

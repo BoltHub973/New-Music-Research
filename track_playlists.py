@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "key
 import km_progress as km
 from dotenv import load_dotenv
 import tidalapi
+from tidalapi.playlist import ItemOrder, OrderDirection
 
 # Load .env explicitly from the working directory (the project/data dir) — a bare
 # load_dotenv() searches upward from this script's dir, i.e. the app bundle when
@@ -167,7 +168,14 @@ def fetch_playlist(session, playlist, progress, overall, window):
         scanned = 0
         offset = 0
         while True:
-            batch = pl.tracks(limit=100, offset=offset)
+            # Always match Tidal Web UI's "DATE ADDED v" sort (newest first) rather than
+            # Tidal's default editorial index order, which scrambles recent tracks.
+            batch = pl.tracks(
+                limit=100,
+                offset=offset,
+                order=ItemOrder.Date,
+                order_direction=OrderDirection.Descending,
+            )
             if not batch:
                 break
             for t in batch:
@@ -217,6 +225,28 @@ def fetch_playlist(session, playlist, progress, overall, window):
         km.log(f"Error fetching {playlist['name']}: {e}")
         progress.advance(overall)
         return []
+
+def _norm_key_part(value):
+    return " ".join((value or "").lower().split())
+
+
+def dedupe_tracks(all_tracks):
+    """Deduplicate tracks while preserving left-to-right playlist and top-to-bottom track order."""
+    unique_tracks = []
+    featured_on = {}
+    for track in all_tracks:
+        track_key = (_norm_key_part(track.get("Artist")), _norm_key_part(track.get("Title")))
+        if track_key not in featured_on:
+            featured_on[track_key] = set()
+            unique_tracks.append(track)
+        featured_on[track_key].add(track.get("Source Playlist", ""))
+
+    for track in unique_tracks:
+        track_key = (_norm_key_part(track.get("Artist")), _norm_key_part(track.get("Title")))
+        track["Playlist Count"] = len(featured_on[track_key])
+
+    return unique_tracks
+
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape Tidal playlists → Spotify playlist.")
@@ -272,21 +302,9 @@ def main():
         ui.step(f"{len(all_tracks)} recent matches found across all playlists")
         km.current("Dedupe", f"{len(all_tracks)} recent matches found", "working")
 
-        # Remove duplicates based on Artist, Album, Title while preserving the exact
-        # left-to-right order of playlists in playlists.json and each playlist's
-        # track order. Also record Playlist Count as metadata for the in-app log.
-        unique_tracks = []
-        featured_on = {}  # track_key -> set of source playlists
-        for track in all_tracks:
-            track_key = (track['Artist'], track['Album'], track['Title'])
-            if track_key not in featured_on:
-                featured_on[track_key] = set()
-                unique_tracks.append(track)
-            featured_on[track_key].add(track['Source Playlist'])
-
-        for track in unique_tracks:
-            track_key = (track['Artist'], track['Album'], track['Title'])
-            track['Playlist Count'] = len(featured_on[track_key])
+        # Deduplicate while preserving the exact left-to-right order of playlists in
+        # playlists.json and newest-first Date Added track order within each playlist.
+        unique_tracks = dedupe_tracks(all_tracks)
 
         dupes = len(all_tracks) - len(unique_tracks)
         ui.ok(f"{len(unique_tracks)} unique tracks in Tidal playlist order "
@@ -323,12 +341,15 @@ def main():
 
             spotify_uri = ""
             playlist_name = ""
+            audit_line = ""
             missed = []
             for line in result.stdout.splitlines():
                 if line.startswith("SPOTIFY_URI:"):
                     spotify_uri = line[len("SPOTIFY_URI:"):].strip()
                 elif line.startswith("PLAYLIST_NAME:"):
                     playlist_name = line[len("PLAYLIST_NAME:"):].strip()
+                elif line.startswith("AUDIT_LINE:"):
+                    audit_line = line[len("AUDIT_LINE:"):].strip()
                 elif line.startswith("MISSED_JSON:"):
                     raw_missed = line[len("MISSED_JSON:"):].strip()
                     try:
@@ -343,10 +364,16 @@ def main():
                 print(f"SPOTIFY_URI:{spotify_uri}")
                 sys.stdout.flush()  # keep the stdout data contract intact for any launcher watching it
 
-            # The child exporter already left busy-mode to drive a real progress
-            # bar; clear our own stale busy flag so resuming here doesn't flash
-            # the working spinner before the results page appears.
+            # Pull any log entries written by the child exporter before updating HUD state.
+            km.hydrate()
             km.clear_busy()
+            if audit_line:
+                km.log(audit_line)
+
+            done_message = (
+                f"Playlist created ({audit_line}) — opening in Spotify"
+                if audit_line else "Playlist created — opening in Spotify"
+            )
 
             # Hand the scraped + missed track lists to the progress window and
             # save this run into the persistent in-app log store (no CSVs).
@@ -354,7 +381,7 @@ def main():
             km.record_run(
                 mode=args.mode,
                 ok=True,
-                message="Playlist created — opening in Spotify",
+                message=done_message,
                 spotify_uri=spotify_uri,
                 playlist_name=playlist_name,
                 scraped=unique_tracks,
@@ -372,7 +399,7 @@ def main():
             if spotify_uri:
                 open_spotify_playlist(spotify_uri)
 
-            km.finish(ok=True, message="Playlist created — opening in Spotify",
+            km.finish(ok=True, message=done_message,
                       spotify_uri=spotify_uri)
         except subprocess.CalledProcessError as e:
             ui.err(f"Spotify export failed: {e}")

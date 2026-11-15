@@ -162,6 +162,64 @@ def authenticate():
         return sp, spotify_call(sp.me)['id']
 
 
+def fetch_playlist_uris(sp, playlist_id):
+    """Read back every track URI currently stored in a Spotify playlist in exact position order."""
+    uris = []
+    offset = 0
+    while True:
+        res = spotify_call(
+            sp.playlist_items,
+            playlist_id,
+            limit=100,
+            offset=offset,
+            fields="items(track(uri)),next,total",
+        )
+        items = res.get("items") or []
+        for item in items:
+            track = item.get("track") or {}
+            uri = track.get("uri")
+            if uri:
+                uris.append(uri)
+        if not res.get("next") or not items:
+            break
+        offset += len(items)
+    return uris
+
+
+def replace_playlist_tracks(sp, playlist_id, expected_uris):
+    """Overwrite a Spotify playlist's contents in chunks of 100 to enforce exact order."""
+    if not expected_uris:
+        spotify_call(sp.playlist_replace_items, playlist_id, [])
+        return
+    spotify_call(sp.playlist_replace_items, playlist_id, expected_uris[:100])
+    for i in range(100, len(expected_uris), 100):
+        spotify_call(sp.playlist_add_items, playlist_id, expected_uris[i:i + 100])
+
+
+def audit_and_repair_playlist(sp, playlist_id, expected_uris):
+    """Verify live Spotify playlist order matches expected_uris; repair once if drifted."""
+    actual_uris = fetch_playlist_uris(sp, playlist_id)
+    if actual_uris == expected_uris:
+        return len(actual_uris), False
+
+    first_diff = next(
+        (idx + 1 for idx, (a, e) in enumerate(zip(actual_uris, expected_uris)) if a != e),
+        min(len(actual_uris), len(expected_uris)) + 1,
+    )
+    ui.warn(
+        f"Spotify playlist order mismatch ({len(actual_uris)} live vs {len(expected_uris)} expected, "
+        f"first diff at #{first_diff}) — repairing order…"
+    )
+    replace_playlist_tracks(sp, playlist_id, expected_uris)
+    repaired_uris = fetch_playlist_uris(sp, playlist_id)
+    if repaired_uris != expected_uris:
+        raise RuntimeError(
+            f"Spotify playlist audit failed after repair: "
+            f"{len(repaired_uris)} live vs {len(expected_uris)} expected"
+        )
+    return len(repaired_uris), True
+
+
 def main():
     # Inherit the live HUD state the pipeline built up (log, stats, phase) so we
     # can keep it animating with real export progress instead of a frozen spinner.
@@ -228,6 +286,7 @@ def main():
 
     # 4. Search and Collect URIs
     track_uris = []
+    seen_uris = set()
     omitted = []  # Tracks that couldn't be confidently matched — returned for the in-app log
 
     def clean_query(t):
@@ -320,11 +379,15 @@ def main():
             # No confident match — omit rather than risk a false track
             if items:
                 best = pick_best_track(items)
-                track_uris.append(best['uri'])
-                spotify_artists = ', '.join(a['name'] for a in best['artists'])
-                ui.found(f"{title} - {artist}",
-                         f"{best['name']} - {spotify_artists}",
-                         best.get('explicit', False))
+                if best['uri'] in seen_uris:
+                    ui.info(f"Skipping duplicate Spotify match: {best['name']} ({title} - {artist})")
+                else:
+                    seen_uris.add(best['uri'])
+                    track_uris.append(best['uri'])
+                    spotify_artists = ', '.join(a['name'] for a in best['artists'])
+                    ui.found(f"{title} - {artist}",
+                             f"{best['name']} - {spotify_artists}",
+                             best.get('explicit', False))
             else:
                 omitted.append({"Title": title, "Artist": artist, "Album": album,
                                 "Source Playlist": track.get('Source Playlist', ''),
@@ -349,6 +412,7 @@ def main():
     playlist_name = mode["title"].format(date=current_date)
     playlist_id = None
     tracks_added = 0
+    audit_status = "0/0 verified"
     publish_error = None
 
     # Machine-readable playlist name for the orchestrator's persistent log.
@@ -361,9 +425,9 @@ def main():
         playlist = spotify_call(sp.user_playlist_create, user_id, playlist_name, public=False)
         playlist_id = playlist['id']
 
-        # 6. Add Tracks
+        # 6. Add Tracks + Post-Publish Order Audit
         if track_uris:
-            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=95)
+            km.overall(n_tracks, n_tracks, "PUBLISHING PLAYLIST", pct=94)
             km.current("Adding tracks to playlist",
                        f"{len(track_uris)} tracks", "exporting")
             # Add in chunks of 100 as per API limits
@@ -379,10 +443,21 @@ def main():
                     progress.update(add_task, advance=len(chunk))
             ui.ok(f"Added [bold {ui.PRIMARY}]{tracks_added}[/] tracks to "
                   f"[{ui.VIOLET}]{playlist_name}[/]")
+
+            km.overall(n_tracks, n_tracks, "AUDITING SPOTIFY ORDER", pct=96)
+            km.current("Verifying Spotify order", f"{len(track_uris)} tracks", "exporting")
+            verified_count, repaired = audit_and_repair_playlist(sp, playlist_id, track_uris)
+            audit_status = (
+                f"{verified_count}/{len(track_uris)} verified in exact order (auto-repaired)"
+                if repaired else f"{verified_count}/{len(track_uris)} verified in exact order"
+            )
+            ui.ok(f"Audit passed: {audit_status}")
+            print(f"AUDIT_LINE:Order audit: {audit_status}")
         else:
             ui.warn("No tracks were found on Spotify to add.")
 
-        # Machine-readable handle for the AppleScript launcher — stdout ONLY.
+        # Machine-readable handle for the AppleScript launcher — stdout ONLY,
+        # emitted only after the playlist order audit passes.
         print(f"SPOTIFY_URI:spotify:playlist:{playlist_id}")
 
     except Exception as e:
@@ -456,6 +531,7 @@ def main():
     ui.summary("BROADCAST COMPLETE", {
         "Playlist": playlist_name,
         "Tracks added": tracks_added,
+        "Order audit": audit_status if track_uris else "—",
         "Omitted": len(omitted),
         "Snapshot": source_label,
         "Missed log": f"{len(omitted)} in app log" if omitted else "—",
