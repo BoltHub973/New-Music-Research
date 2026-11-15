@@ -36,12 +36,9 @@ window (`./demo.sh`, `./demo.sh fail`, `./demo.sh empty`).
 
 1. **Tidal is fetched via its API** — every playlist in `playlists.json` is checked for tracks added **within the last 7 days**. No browser, no scraping — the run takes seconds and can't trip Tidal's bot detection (which once blocked this machine's IP when this step was a headless-browser scraper)
    - All artists on a track are captured (not just the first), so featuring/co-artist info is preserved
-2. **A CSV is saved** — a timestamped file is created in the `scraped-files` folder, e.g.:
-   ```
-   scraped-files/SCRAPED 02-20-26__10.15.00 PM.csv
-   ```
-   Duplicates across playlists are collapsed to a single row, and tracks are **sorted by how many playlists featured them** (most-featured first) — a track on 5 playlists lands above one on 3. Since the exporter preserves CSV order, the hottest tracks of the week open the Spotify playlist. Each row's `Playlist Count` column records the number of distinct playlists the track appeared on.
-3. **A Spotify playlist is created** — a new private playlist is added to your Spotify account named:
+2. **Duplicates removed in `playlists.json` order** — playlists are processed strictly left-to-right as listed in `playlists.json` (`Rap Bars & Melodies` first, then `Thoro Hip-Hop`, `Women of Hip-Hop`, etc.), preserving each playlist's track order so the exported Spotify playlist matches your Tidal tab sequence without re-sorting by playlist count.
+3. **Logged in-app (no CSVs)** — each run's scraped and missed tracks are stored directly inside `~/Library/Application Support/New Music Research/history.json` and browsed inside the app's **Scrape & Missed Log** (`⌘L`), without creating `scraped-files/` or `missed-tracks/` CSVs going forward.
+4. **A Spotify playlist is created** — a new private playlist is added to your Spotify account named:
    ```
    🪁 DX 02-20-26
    ```
@@ -67,10 +64,7 @@ window (`./demo.sh`, `./demo.sh fail`, `./demo.sh empty`).
 
 ## 📂 Data Persistence
 
-The project organizes its output into two main directories:
-
-- **`scraped-files/`** — Stores timestamped CSVs of every matching track found on Tidal (added in the last 7 days). These serve as a historical record of what was collected before the Spotify matching process begins.
-- **`missed-tracks/`** — If a track found on Tidal cannot be confidently matched on Spotify (e.g., due to different artist formatting or if the track is not yet on Spotify), it is saved here in a `MISSED` CSV. This makes it easy to manually find and add any tracks the script couldn't automate.
+- **In-app Scrape & Missed Log (`history.json`)** — Stores every run's scraped tracks, missed tracks, timestamps, and Spotify URI in `~/Library/Application Support/New Music Research/history.json`, viewable in-app with **⌘L** (no new CSVs are created in `scraped-files/` or `missed-tracks/`).
 - **`generated-artwork/`** — Stores the timestamped JPEG cover art generated for each playlist run (e.g. `ARTWORK 02-20-26__10.15.00 PM.jpg`). Each cover is rendered fresh via `generate_artwork.py` (HTML/CSS → Playwright → JPEG) and stamped with that day's date. To preview a cover without creating a playlist, run `python3 generate_artwork.py 2026-05-22`.
 
 ---

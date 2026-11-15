@@ -31,6 +31,7 @@ from pathlib import Path
 # The single source of truth the standalone app polls. Sits alongside the Tidal
 # session token in the project's existing ~/.config/new-music-research/ dir.
 PROGRESS_FILE = Path.home() / ".config" / "new-music-research" / "progress.json"
+HISTORY_FILE = Path.home() / "Library" / "Application Support" / "New Music Research" / "history.json"
 
 _MIN_INTERVAL = 0.35  # seconds between throttled pushes
 
@@ -230,3 +231,57 @@ def finish(ok: bool = True, message: str = "", spotify_uri: str = "") -> None:
     _state["busy"] = False  # the results page replaces the working message
     _state["current"] = {"name": "", "detail": "", "status": "done"}
     _push(force=True)
+
+
+def _slim_history(tracks) -> list:
+    out = []
+    for t in tracks or []:
+        out.append({
+            "title": (t.get("Title") or t.get("title") or "").strip(),
+            "artist": (t.get("Artist") or t.get("artist") or "").strip(),
+            "album": (t.get("Album") or t.get("album") or "").strip(),
+            "source": (t.get("Source Playlist") or t.get("source") or "").strip(),
+            "dateAdded": (t.get("Date Added") or t.get("dateAdded") or "").strip(),
+            "art": (t.get("Art") or t.get("art") or "").strip(),
+            "video": (t.get("Video Art") or t.get("video") or "").strip(),
+            "playlistCount": int(t.get("Playlist Count") or t.get("playlistCount") or 1),
+        })
+    return out
+
+
+def record_run(mode: str, ok: bool, message: str = "", spotify_uri: str = "",
+               playlist_name: str = "", scraped=None, missed=None, stats_dict=None) -> None:
+    """Append a completed run to the app's persistent JSON log store (replaces CSVs)."""
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        existing = []
+        if HISTORY_FILE.exists():
+            try:
+                loaded = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    existing = loaded
+            except Exception:
+                existing = []
+
+        scraped_list = _slim_history(scraped)
+        missed_list = _slim_history(missed)
+        entry = {
+            "id": f"run-{int(time.time() * 1000)}",
+            "timestamp": time.time(),
+            "mode": mode,
+            "ok": bool(ok),
+            "message": message or "",
+            "playlistName": playlist_name or "",
+            "spotifyUri": spotify_uri or "",
+            "stats": stats_dict or dict(_state.get("stats") or {}),
+            "scraped": scraped_list,
+            "missed": missed_list,
+        }
+        updated = [entry] + existing
+        updated = updated[:250]
+        tmp = HISTORY_FILE.with_name(HISTORY_FILE.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(updated, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, HISTORY_FILE)
+    except Exception:
+        pass

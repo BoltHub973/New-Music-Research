@@ -2,7 +2,7 @@ import bootstrap
 import argparse
 import base64
 import csv
-import glob
+import json
 import os
 import sys
 import datetime
@@ -54,16 +54,6 @@ MODES = {
     "this-week": {"title": "🪁 DX {date}", "theme": "violet"},
     "last-week": {"title": "🟠 DX LAST WEEK {date}", "theme": "orange"},
 }
-
-def get_latest_csv():
-    """Finds the most recently created SCRAPED csv file."""
-    files = glob.glob("scraped-files/SCRAPED *.csv")
-    if not files:
-        return None
-    # Sort by modification time (or name since it has timestamp)
-    # Using os.path.getmtime just to be safe about "latest" creation
-    latest_file = max(files, key=os.path.getmtime)
-    return latest_file
 
 def get_credentials():
     """Prompts user for credentials if not found in env."""
@@ -178,25 +168,24 @@ def main():
     km.hydrate()
 
     # 1. basic setup
-    parser = argparse.ArgumentParser(description="Export a scraped Tidal CSV to a Spotify playlist.")
-    parser.add_argument("csv_file", nargs="?", default=None, help="Scraped CSV (default: latest in scraped-files/)")
+    parser = argparse.ArgumentParser(description="Export scraped Tidal tracks to a Spotify playlist.")
+    parser.add_argument("csv_file", nargs="?", default=None, help="Optional legacy CSV file of tracks")
+    parser.add_argument("--stdin", action="store_true", help="Read tracks JSON array from stdin")
     parser.add_argument("--mode", choices=sorted(MODES), default="this-week",
-                        help="Scrape window the CSV represents — controls playlist title & artwork theme")
+                        help="Scrape window the snapshot represents — controls playlist title & artwork theme")
     args = parser.parse_args()
 
     mode = MODES[args.mode]
     csv_file = args.csv_file
-    if not csv_file:
-        ui.info("Looking for latest scraped CSV…")
-        csv_file = get_latest_csv()
-
-    if not csv_file:
-        ui.err("No CSV file provided or found.")
+    if not args.stdin and not csv_file:
+        ui.err("No track input provided (pass --stdin or a CSV path).")
         sys.exit(1)
+
+    source_label = "Tidal API snapshot (in-memory)" if args.stdin else csv_file
 
     # 2. Authenticate
     ui.section("AUTHENTICATE SPOTIFY")
-    ui.step(f"Source snapshot: [{ui.PRIMARY}]{csv_file}[/]")
+    ui.step(f"Source snapshot: [{ui.PRIMARY}]{source_label}[/]")
     if not get_credentials():
         sys.exit(1)
 
@@ -217,23 +206,29 @@ def main():
     # 3. Read Tracks
     tracks_to_search = []
     try:
-        with open(csv_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                tracks_to_search.append(row)
+        if args.stdin:
+            raw = sys.stdin.read().strip()
+            loaded = json.loads(raw) if raw else []
+            if isinstance(loaded, list):
+                tracks_to_search = loaded
+        else:
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    tracks_to_search.append(row)
     except Exception as e:
-        ui.err(f"Error reading CSV {csv_file}: {e}")
+        ui.err(f"Error reading tracks input: {e}")
         sys.exit(1)
 
     if not tracks_to_search:
-        ui.warn("No tracks found in CSV.")
+        ui.warn("No tracks found to export.")
         return
 
     ui.ok(f"Loaded [bold {ui.PRIMARY}]{len(tracks_to_search)}[/] tracks from snapshot")
 
     # 4. Search and Collect URIs
     track_uris = []
-    omitted = []  # Tracks that couldn't be confidently matched — saved to missed-tracks/
+    omitted = []  # Tracks that couldn't be confidently matched — returned for the in-app log
 
     def clean_query(t):
         return t.replace("ft.", "").replace("feat.", "").split("(")[0].strip()
@@ -353,9 +348,11 @@ def main():
     current_timestamp = now.strftime("%m-%d-%y__%I.%M.%S %p")
     playlist_name = mode["title"].format(date=current_date)
     playlist_id = None
-    missed_file = None
     tracks_added = 0
     publish_error = None
+
+    # Machine-readable playlist name for the orchestrator's persistent log.
+    print(f"PLAYLIST_NAME:{playlist_name}")
 
     try:
         ui.step(f"Creating playlist [{ui.VIOLET}]{playlist_name}[/]")
@@ -433,22 +430,16 @@ def main():
         except Exception as e:
             ui.warn(f"Cover upload failed (playlist keeps its tracks): {e}")
 
-    # 7. Save omitted tracks to missed-tracks/
+    # 7. Emit omitted tracks as JSON for the in-app log (no CSV files generated)
     if omitted:
-        os.makedirs("missed-tracks", exist_ok=True)
-        missed_file = os.path.join("missed-tracks", f"MISSED {current_timestamp}.csv")
-        keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art"]
-        with open(missed_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=keys)
-            writer.writeheader()
-            writer.writerows(omitted)
-        ui.warn(f"{len(omitted)} track(s) omitted (no confident Spotify match) → {missed_file}")
+        ui.warn(f"{len(omitted)} track(s) omitted (no confident Spotify match) → logged in app")
         for t in omitted:
             ui.info(f"{t['Title']} - {t['Artist']}")
-        # Machine-readable handle for the orchestrator's results page — stdout ONLY.
-        print(f"MISSED_FILE:{missed_file}")
     else:
         ui.ok("All tracks matched successfully — nothing omitted.")
+
+    # Machine-readable handle for the orchestrator's results & persistent log — stdout ONLY.
+    print(f"MISSED_JSON:{json.dumps(omitted, ensure_ascii=False)}")
 
     # 8. Closing summary card — reports what actually happened, and a publish
     # failure exits non-zero so the pipeline (and its HUD) reports the failure
@@ -458,7 +449,7 @@ def main():
             "Playlist": playlist_name if playlist_id else "— not created —",
             "Tracks added": f"{tracks_added} of {len(track_uris)}",
             "Error": str(publish_error),
-            "Snapshot": csv_file,
+            "Snapshot": source_label,
         })
         sys.exit(1)
 
@@ -466,8 +457,8 @@ def main():
         "Playlist": playlist_name,
         "Tracks added": tracks_added,
         "Omitted": len(omitted),
-        "Snapshot": csv_file,
-        "Missed log": missed_file or "—",
+        "Snapshot": source_label,
+        "Missed log": f"{len(omitted)} in app log" if omitted else "—",
     })
 
 if __name__ == "__main__":

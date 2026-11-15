@@ -13,17 +13,31 @@ final class WebViewController: NSViewController {
 
     /// Invoked when the HUD asks to close (its Close button → `KeyboardMaestro.Cancel`).
     var onClose: (() -> Void)?
+    var onReady: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
+    var onToggleAppearance: (() -> Void)?
+    var projectDirProvider: (() -> String)?
+
+    private(set) var isReady = false
+    private var confirmCompletion: ((Bool) -> Void)?
 
     /// The most recent progress frame, re-applied once the page finishes loading so a
     /// frame that arrives before the document is ready (or across a reload) isn't lost.
     private var lastPayload = ""
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nmr")
+    }
+
     override func loadView() {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.mediaTypesRequiringUserActionForPlayback = []
-        // Web Inspector (1/3): enable before constructing the web view.
+        // Web Inspector + Clipboard permissions
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        config.preferences.setValue(true, forKey: "javaScriptCanAccessClipboard")
+        config.preferences.setValue(true, forKey: "DOMPasteAllowed")
 
         let ucc = config.userContentController
         ucc.add(self, name: "nmr")
@@ -37,15 +51,29 @@ final class WebViewController: NSViewController {
         if #available(macOS 13.3, *) {
             webView.isInspectable = true  // Web Inspector (2/3)
         }
-        // Let the dark window show through until the page paints — no white flash.
+        // Let the window background show through cleanly until the page paints.
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = self
         webView.uiDelegate = self
         self.view = webView
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSharedStoreChanged),
+            name: SharedStore.changedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleHistoryChanged),
+            name: HistoryStore.changedNotification,
+            object: nil
+        )
     }
 
     /// Load the bundled HUD.
     func loadProgressUI() {
+        isReady = false
         guard let html = Bundle.main.url(forResource: "progress_window", withExtension: "html") else {
             webView.loadHTMLString(
                 "<body style='background:#050508;color:#e8e8f0;font-family:sans-serif;padding:40px'>"
@@ -56,39 +84,174 @@ final class WebViewController: NSViewController {
         webView.loadFileURL(html, allowingReadAccessTo: html.deletingLastPathComponent())
     }
 
-    /// Hand a fresh progress frame (raw JSON text) to the HUD's poll loop.
+    /// Hand a fresh progress frame (raw JSON text) to the HUD.
     func setPayload(_ json: String) {
-        // Encode the JSON text as a JS string literal so it injects safely regardless
-        // of quotes / unicode in playlist names. The HUD does JSON.parse on it.
         lastPayload = json
         guard let data = try? JSONEncoder().encode(json),
               let literal = String(data: data, encoding: .utf8) else { return }
-        webView.evaluateJavaScript("window.__nmrPayload = \(literal);", completionHandler: nil)
+        webView.evaluateJavaScript(
+            "window.__nmrPayload = \(literal); if (window.__nmrOnPayload) window.__nmrOnPayload();",
+            completionHandler: nil
+        )
     }
 
     func focusWebView() {
         view.window?.makeFirstResponder(webView)
     }
 
-    // MARK: - Zoom (⌘+ / ⌘- / ⌘0), persisted across launches
-
-    private let zoomKey = "pageZoom"
-    private let zoomStep: CGFloat = 0.1
-    private let zoomRange: ClosedRange<CGFloat> = 0.5...3.0
-
-    private var storedZoom: CGFloat {
-        let v = UserDefaults.standard.double(forKey: zoomKey)
-        return v == 0 ? 1.0 : CGFloat(v)
+    func applyAppearance() {
+        let app = SharedStore.shared.appearance
+        view.window?.appearance = NSAppearance(named: app == .light ? .aqua : .darkAqua)
+        guard isReady else { return }
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setTheme('\(app.rawValue)');", completionHandler: nil)
     }
 
-    func zoomIn()    { applyZoom(storedZoom + zoomStep) }
-    func zoomOut()   { applyZoom(storedZoom - zoomStep) }
+    func applyStoredZoom() {
+        webView.pageZoom = CGFloat(SharedStore.shared.pageZoom)
+    }
+
+    func pushHistory() {
+        guard isReady else { return }
+        let dir = projectDirProvider?() ?? (NSHomeDirectory() + "/Development/New Music Research")
+        let json = HistoryStore.shared.loadJSONString(projectDir: dir)
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setHistory(\(json));", completionHandler: nil)
+    }
+
+    func pushShortcuts() {
+        guard isReady else { return }
+        let payload: [String: String] = [
+            "openLog": ShortcutRegistry.shared.primaryDisplay(for: "openLog") ?? "⌘L",
+            "openSettings": ShortcutRegistry.shared.primaryDisplay(for: "openSettings") ?? "⌘,",
+            "toggleAppearance": ShortcutRegistry.shared.primaryDisplay(for: "toggleAppearance") ?? "⌘⇧L",
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setShortcuts(\(json));", completionHandler: nil)
+    }
+
+    func openLog(tab: String? = nil) {
+        let arg = tab.flatMap { jsonString($0) } ?? "null"
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.openLog(\(arg));", completionHandler: nil)
+    }
+
+    func toggleLog(tab: String? = nil) {
+        let arg = tab.flatMap { jsonString($0) } ?? "null"
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.toggleLog(\(arg));", completionHandler: nil)
+    }
+
+    func openHUD() {
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.openHUD();", completionHandler: nil)
+    }
+
+    func setOccluded(_ occluded: Bool) {
+        guard isReady else { return }
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setOccluded(\(occluded ? "true" : "false"));", completionHandler: nil)
+    }
+
+    func askConfirm(
+        title: String,
+        subtitle: String,
+        tile: String = "⚠️",
+        kind: String = "warn",
+        facts: [[String]],
+        yesLabel: String = "Yes",
+        noLabel: String = "No",
+        completion: @escaping (Bool) -> Void
+    ) {
+        // Complete any superseded modal safely before opening the next one.
+        if let prev = confirmCompletion {
+            confirmCompletion = nil
+            prev(false)
+        }
+        confirmCompletion = completion
+        let payload: [String: Any] = [
+            "title": title,
+            "subtitle": subtitle,
+            "tile": tile,
+            "kind": kind,
+            "facts": facts,
+            "yesLabel": yesLabel,
+            "noLabel": noLabel,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else {
+            confirmCompletion = nil
+            completion(false)
+            return
+        }
+        let invoke = { [weak self] in
+            self?.webView.evaluateJavaScript("window.NMRApp && window.NMRApp.askConfirm(\(json));", completionHandler: nil)
+        }
+        if isReady {
+            invoke()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { invoke() }
+        }
+    }
+
+    func evalJS(_ script: String, completion: ((Any?) -> Void)? = nil) {
+        webView.evaluateJavaScript(script) { result, _ in
+            completion?(result)
+        }
+    }
+
+    func takeSnapshot(to path: String, completion: @escaping (Bool) -> Void) {
+        let capture = { [weak self] in
+            guard let self = self else { completion(false); return }
+            let cfg = WKSnapshotConfiguration()
+            self.webView.takeSnapshot(with: cfg) { image, _ in
+                guard let image = image,
+                      let tiff = image.tiffRepresentation,
+                      let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:]) else {
+                    completion(false)
+                    return
+                }
+                do {
+                    try png.write(to: URL(fileURLWithPath: path))
+                    completion(true)
+                } catch {
+                    completion(false)
+                }
+            }
+        }
+        if isReady {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { capture() }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { capture() }
+        }
+    }
+
+    @objc private func handleSharedStoreChanged() {
+        applyAppearance()
+        applyStoredZoom()
+        pushShortcuts()
+    }
+
+    @objc private func handleHistoryChanged() {
+        pushHistory()
+    }
+
+    private func jsonString(_ str: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: [str]),
+              let arr = String(data: data, encoding: .utf8),
+              arr.count >= 2 else { return nil }
+        return String(arr.dropFirst().dropLast())
+    }
+
+    // MARK: - Zoom (⌘= / ⌘- / ⌘0), synced cleanly across windows via SharedStore
+
+    private let zoomStep: Double = 0.1
+    private let zoomRange: ClosedRange<Double> = 0.5...3.0
+
+    func zoomIn()    { applyZoom(SharedStore.shared.pageZoom + zoomStep) }
+    func zoomOut()   { applyZoom(SharedStore.shared.pageZoom - zoomStep) }
     func zoomReset() { applyZoom(1.0) }
 
-    private func applyZoom(_ value: CGFloat) {
+    private func applyZoom(_ value: Double) {
         let z = min(max(value, zoomRange.lowerBound), zoomRange.upperBound)
-        UserDefaults.standard.set(Double(z), forKey: zoomKey)
-        webView.pageZoom = z
+        SharedStore.shared.setPageZoom(z)
+        webView.pageZoom = CGFloat(SharedStore.shared.pageZoom)
     }
 
     // The shim that stands in for Keyboard Maestro's injected bridge.
@@ -114,8 +277,34 @@ extension WebViewController: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController,
                               didReceive message: WKScriptMessage) {
         guard message.name == "nmr", let body = message.body as? String else { return }
-        if body == "close" {
+        if body == "ready" {
+            isReady = true
+            applyAppearance()
+            applyStoredZoom()
+            pushShortcuts()
+            pushHistory()
+            onReady?()
+        } else if body == "close" {
             onClose?()
+        } else if body == "openSettings" {
+            onOpenSettings?()
+        } else if body == "toggleAppearance" {
+            onToggleAppearance?()
+        } else if body == "clearHistory" {
+            HistoryStore.shared.clearAll()
+        } else if body.hasPrefix("deleteRun:") {
+            let runId = String(body.dropFirst("deleteRun:".count))
+            HistoryStore.shared.deleteRun(id: runId)
+        } else if body.hasPrefix("confirmResponse:") {
+            let ans = body.dropFirst("confirmResponse:".count) == "true"
+            if let fn = confirmCompletion {
+                confirmCompletion = nil
+                fn(ans)
+            }
+        } else if body.hasPrefix("copyText:") {
+            let text = String(body.dropFirst("copyText:".count))
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
         } else if body.hasPrefix("editMacro:") {
             openMacroInEditor(String(body.dropFirst("editMacro:".count)))
         }
@@ -138,10 +327,15 @@ extension WebViewController: WKScriptMessageHandler {
 
 extension WebViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        webView.pageZoom = storedZoom  // survive reloads / re-runs
+        isReady = true
+        applyStoredZoom()
+        applyAppearance()
+        pushShortcuts()
+        pushHistory()
         // Re-apply the latest frame: an update may have arrived before the document
         // was ready, or the page may have just been reloaded for a re-run.
         if !lastPayload.isEmpty { setPayload(lastPayload) }
+        onReady?()
     }
 
     func webView(_ webView: WKWebView,

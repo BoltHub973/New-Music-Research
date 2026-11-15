@@ -14,15 +14,19 @@ REPO_ROOT="$(cd "${SOURCE_DIR}/.." && pwd)"
 APP_PATH="/Applications/${APP_DISPLAY}.app"
 
 echo "Building ${APP_DISPLAY}…"
+RELAUNCH=0
+if [ "${1:-}" = "--relaunch" ]; then
+    RELAUNCH=1
+fi
 
-# 1. Clean prior bundle.
+# 1. Compile BEFORE touching /Applications so a failed build leaves the existing app intact.
+cd "${SOURCE_DIR}"
+swift build -c release --product "${PRODUCT}"
+
+# 2. Replace bundle cleanly.
 rm -rf "${APP_PATH}"
 mkdir -p "${APP_PATH}/Contents/MacOS"
 mkdir -p "${APP_PATH}/Contents/Resources"
-
-# 2. Compile.
-cd "${SOURCE_DIR}"
-swift build -c release --product "${PRODUCT}"
 cp ".build/release/${PRODUCT}" "${APP_PATH}/Contents/MacOS/${PRODUCT}"
 
 # 3. Info.plist + build stamp.
@@ -61,13 +65,17 @@ if [ -n "${COMMIT_URL}" ]; then
     /usr/libexec/PlistBuddy -c "Add :NewMusicResearchVersionCommitURL string ${COMMIT_URL}" "${PLIST_DST}"
 fi
 
-# 4. Bundle the HUD (single source of truth lives in keyboard-maestro/).
+/usr/libexec/PlistBuddy -c "Delete :NMRProjectRoot" "${PLIST_DST}" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :NMRProjectRoot string ${REPO_ROOT}" "${PLIST_DST}"
+
+# 4. Bundle the HUD + Settings UI.
 cp "${REPO_ROOT}/keyboard-maestro/progress_window.html" "${APP_PATH}/Contents/Resources/progress_window.html"
+cp "Resources/settings.html" "${APP_PATH}/Contents/Resources/settings.html"
 
 # 4b. Bundle the Python pipeline — the app runs this copy, so the installed app is
 # always self-consistent no matter what any checkout currently contains. Only code
-# and static assets ship in the bundle; mutable state (.env, token caches, scraped
-# CSVs, playlists.json) stays in the project/data dir the pipeline runs *in*.
+# and static assets ship in the bundle; mutable state (.env, token caches,
+# playlists.json) stays in the project/data dir the pipeline runs *in*.
 PIPELINE_DST="${APP_PATH}/Contents/Resources/pipeline"
 mkdir -p "${PIPELINE_DST}/keyboard-maestro"
 for f in bootstrap.py ui.py track_playlists.py export_to_spotify.py \
@@ -99,6 +107,20 @@ fi
 
 echo "✓ Built ${APP_PATH}"
 echo "  Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST_DST}") (${DISPLAY})"
+
+if [ "${RELAUNCH}" = "1" ]; then
+    pkill -x "${PRODUCT}" || true
+    for _ in $(seq 1 20); do
+        pgrep -x "${PRODUCT}" >/dev/null || break
+        sleep 0.15
+    done
+    if [ -x "${HOME}/.local/bin/focus-guard" ]; then
+        "${HOME}/.local/bin/focus-guard" "${BUNDLE_ID}" 5 -- open -g -n "${APP_PATH}" --env NMR_BACKGROUND_LAUNCH=1 --env NMR_SKIP_AUTO_RUN=1
+    else
+        open -g -n "${APP_PATH}" --env NMR_BACKGROUND_LAUNCH=1 --env NMR_SKIP_AUTO_RUN=1
+    fi
+    pgrep -a -x "${PRODUCT}" || true
+fi
 
 # Debug worktree menu item — standard on every Mac app.
 # Prints nothing once the menu is installed. See ~/.claude/skills/mac-worktree-menu.

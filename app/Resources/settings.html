@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Settings — New Music Research</title>
+<style>
+:root {
+  --bg: #08090c;
+  --surface: #0f1117;
+  --surface-2: #151822;
+  --surface-3: #1b1f2c;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #eef1f7;
+  --text-2: #b4bdd0;
+  --muted: #8490a8;
+  --accent: #00e5ff;
+  --accent-dim: rgba(0, 229, 255, 0.14);
+  --accent-border: rgba(0, 229, 255, 0.42);
+  --green: #18e070;
+  --green-dim: rgba(24, 224, 112, 0.14);
+  --amber: #f5b942;
+  --amber-dim: rgba(245, 185, 66, 0.15);
+  --danger: #ff5c72;
+  --danger-dim: rgba(255, 92, 114, 0.15);
+  --shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, monospace;
+}
+
+html[data-theme="light"] {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --surface-3: #eaeff6;
+  --border: rgba(15, 23, 42, 0.11);
+  --border-strong: rgba(15, 23, 42, 0.22);
+  --text: #111827;
+  --text-2: #374151;
+  --muted: #5b6577;
+  --accent: #0077cc;
+  --accent-dim: rgba(0, 119, 204, 0.11);
+  --accent-border: rgba(0, 119, 204, 0.36);
+  --green: #128a49;
+  --green-dim: rgba(18, 138, 73, 0.12);
+  --amber: #b4690e;
+  --amber-dim: rgba(180, 105, 14, 0.12);
+  --danger: #c8233c;
+  --danger-dim: rgba(200, 35, 60, 0.11);
+  --shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 276px 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Left Rail */
+.rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 36px 14px 16px;
+  min-height: 0;
+}
+
+.rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 12px;
+}
+
+.rail-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.icon-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.search-wrap {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 9px 32px 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.search-input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.search-input::placeholder { color: var(--muted); }
+
+.clear-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.clear-btn.visible { display: inline-flex; }
+.clear-btn:hover { background: var(--accent-dim); color: var(--text); }
+
+.nav-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.nav-row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-row.active {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--text);
+  font-weight: 600;
+}
+.nav-row.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.nav-row.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.drag-grip {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.drag-grip:hover { color: var(--text); background: var(--surface-3); }
+
+.nav-label {
+  flex: 1;
+  font-size: 14px;
+  text-align: left;
+  word-break: break-word;
+}
+
+.kbd-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.rail-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Right Content Pane */
+.main-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 38px 36px 72px;
+  min-height: 0;
+}
+
+.scroll-fade {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 54px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg) 82%);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 12px;
+}
+.scroll-fade.visible { display: flex; }
+
+.more-pill {
+  pointer-events: auto;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.more-pill:hover { color: var(--text); border-color: var(--accent-border); }
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.section-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.section-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.card-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.btn-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.12s ease;
+}
+.btn:hover { background: var(--surface-3); border-color: var(--accent-border); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+.btn-danger {
+  background: var(--danger-dim);
+  border-color: rgba(255, 92, 114, 0.38);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: rgba(255, 92, 114, 0.24);
+  border-color: var(--danger);
+}
+.btn-sm { padding: 5px 10px; font-size: 12.5px; border-radius: 8px; }
+
+.path-box {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+
+/* Appearance Swatch Cards */
+.appearance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.14s ease, background 0.15s ease;
+}
+.theme-card:hover { border-color: var(--border-strong); }
+.theme-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.theme-preview {
+  height: 86px;
+  border-radius: 9px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(128, 140, 160, 0.24);
+}
+.theme-preview.dark-prev {
+  background: #08090c;
+  color: #eef1f7;
+}
+.theme-preview.light-prev {
+  background: #f6f8fb;
+  color: #111827;
+}
+.prev-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.prev-dot { width: 8px; height: 8px; border-radius: 50%; background: #00e5ff; }
+.light-prev .prev-dot { background: #0077cc; }
+.prev-line { height: 7px; border-radius: 4px; flex: 1; background: rgba(255,255,255,0.14); }
+.light-prev .prev-line { background: rgba(15,23,42,0.14); }
+.prev-blocks { display: flex; gap: 6px; }
+.prev-block { flex: 1; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); }
+.light-prev .prev-block { background: #ffffff; border: 1px solid rgba(15,23,42,0.12); }
+
+.theme-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text);
+}
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+/* Toggle Switch */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.16s ease;
+}
+.switch input:checked + .slider {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
+  background: var(--accent);
+}
+
+/* Shortcuts Filter & Multi-Combo Rows */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.filter-bar .search-wrap {
+  flex: 1;
+  margin: 0;
+}
+.press-keys-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.press-keys-pill.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.match-count {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.shortcut-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 18px 0 8px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.shortcut-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+.shortcut-name { font-weight: 600; color: var(--text); }
+.shortcut-id { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+
+.combo-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.combo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+.combo-remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.combo-remove:hover { color: var(--danger); }
+
+.record-btn {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.record-btn:hover { border-color: var(--accent); color: var(--text); }
+.record-btn.listening {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.conflict-banner {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--amber-dim);
+  border: 1px solid rgba(245, 185, 66, 0.45);
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 12px;
+  display: none;
+}
+.conflict-banner.visible { display: block; }
+
+/* URL Commands */
+.route-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 10px;
+}
+.route-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.route-url {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  word-break: break-all;
+}
+.route-summary {
+  color: var(--text-2);
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.route-params {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.search-match-group {
+  margin-bottom: 18px;
+}
+.search-match-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.empty-state {
+  padding: 28px;
+  text-align: center;
+  border-radius: 12px;
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+}
+
+/* NAGA Confirm Modal (replaces native confirm/NSAlert) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 11, 0.74);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  padding: 24px;
+}
+.modal-backdrop.open { display: flex; }
+
+.naga-modal {
+  width: min(640px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.naga-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.naga-modal-tile {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  background: var(--danger-dim);
+  border: 1px solid rgba(255, 92, 114, 0.35);
+  flex-shrink: 0;
+}
+.naga-modal-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.naga-modal-sub {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.naga-facts {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 18px;
+  font-size: 13.5px;
+}
+.naga-facts td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  word-break: break-word;
+}
+.naga-facts td:first-child {
+  width: 150px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.naga-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--accent-border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 950;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="rail">
+    <div class="rail-header">
+      <span class="rail-title">SETTINGS</span>
+      <button class="icon-btn" id="closeSettingsBtn" title="Close Settings (Esc)">✕</button>
+    </div>
+    <div class="search-wrap">
+      <input
+        id="settingsSearch"
+        class="search-input"
+        type="text"
+        placeholder="Search settings…"
+        autocorrect="off"
+        autocapitalize="off"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="settingsSearchClear" class="clear-btn" title="Clear search">✕</button>
+    </div>
+    <nav class="nav-list" id="navList" aria-label="Settings sections"></nav>
+    <div class="rail-footer">
+      <span>Drag ≡ to reorder</span>
+      <span id="shortcutSummaryBadge">⌘,</span>
+    </div>
+  </aside>
+
+  <main class="main-wrap">
+    <div class="content-scroll" id="contentScroll">
+      <div id="contentRoot"></div>
+    </div>
+    <div class="scroll-fade" id="scrollFade">
+      <button class="more-pill" id="moreBtn">▾ more</button>
+    </div>
+  </main>
+</div>
+
+<!-- NAGA Large Confirmation Modal -->
+<div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true">
+  <div class="naga-modal">
+    <div class="naga-modal-head">
+      <div class="naga-modal-tile" id="confirmTile">🗑️</div>
+      <div>
+        <h2 class="naga-modal-title" id="confirmTitle">Confirm Action</h2>
+        <p class="naga-modal-sub" id="confirmSubtitle"></p>
+      </div>
+    </div>
+    <table class="naga-facts" id="confirmFacts"></table>
+    <div class="naga-modal-actions">
+      <button class="btn" id="confirmNoBtn">No <span class="kbd-hint">N / Esc</span></button>
+      <button class="btn btn-danger" id="confirmYesBtn">Yes <span class="kbd-hint">Y / ↩</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SECTION_META = {
+  general: { id: "general", title: "General", badge: "⌃G", keywords: ["general", "history", "data", "folder", "finder", "clear", "zoom", "log", "storage"] },
+  appearance: { id: "appearance", title: "Appearance", badge: "⌃A", keywords: ["appearance", "dark", "light", "daybreak", "menu bar", "git", "worktree", "color"] },
+  shortcuts: { id: "shortcuts", title: "Shortcuts", badge: "⌃H", keywords: ["shortcut", "hotkey", "key", "binding", "combo", "keyboard", "record"] },
+  urls: { id: "urls", title: "URL Commands", badge: "⌃U", keywords: ["url", "scheme", "nmr://", "deep link", "automation", "command", "route"] },
+};
+
+const RESERVED_COMBOS = new Set(["cmd+q", "cmd+w", "cmd+h", "cmd+m", "cmd+c", "cmd+v", "cmd+x", "cmd+a", "cmd+z"]);
+
+let STATE = {
+  activeSection: "general",
+  sectionOrder: ["general", "appearance", "shortcuts", "urls"],
+  appearance: "dark",
+  pageZoom: 1.0,
+  showWorktreeMenu: true,
+  storePath: "~/Library/Application Support/New Music Research/history.json",
+  runCount: 0,
+  shortcuts: [],
+  urlRoutes: [],
+  searchQuery: "",
+  shortcutFilter: "",
+  pressKeysFilter: false,
+  recordingActionId: null,
+  conflictMessage: "",
+};
+
+let confirmResolver = null;
+let dragSectionId = null;
+
+function post(payload) {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nmrSettings) {
+    window.webkit.messageHandlers.nmrSettings.postMessage(payload);
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+function escapeHTML(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function setTheme(appearance) {
+  STATE.appearance = appearance === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", STATE.appearance);
+}
+
+// Physical key mapper so Option chords map to physical keys cleanly
+function comboFromKeyboardEvent(e) {
+  // Block non-trusted / external injected / zero-keycode synthetic keys while recording
+  if (!e.isTrusted) return null;
+  const code = e.code || "";
+  if (!code || e.keyCode === 0) return null;
+
+  const modifierCodes = new Set([
+    "MetaLeft", "MetaRight", "ControlLeft", "ControlRight",
+    "AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "CapsLock"
+  ]);
+  if (modifierCodes.has(code)) return { pendingModifierOnly: true };
+
+  const codeMap = {
+    Equal: "=", Minus: "-", BracketLeft: "[", BracketRight: "]",
+    Quote: "'", Semicolon: ";", Backslash: "\\", Comma: ",", Slash: "/",
+    Period: ".", Backquote: "`", Enter: "enter", NumpadEnter: "enter",
+    Tab: "tab", Space: "space", Backspace: "backspace", Escape: "esc",
+    Delete: "delete", ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down"
+  };
+
+  let keyName = codeMap[code] || "";
+  if (!keyName && code.startsWith("Key") && code.length === 4) {
+    keyName = code.slice(3).toLowerCase();
+  } else if (!keyName && code.startsWith("Digit") && code.length === 6) {
+    keyName = code.slice(5);
+  } else if (!keyName && /^F([1-9]|1[0-2])$/.test(code)) {
+    keyName = code.toLowerCase();
+  }
+  if (!keyName) return null;
+
+  const mods = [];
+  if (e.ctrlKey) mods.push("ctrl");
+  if (e.altKey) mods.push("opt");
+  if (e.shiftKey) mods.push("shift");
+  if (e.metaKey) mods.push("cmd");
+
+  if (mods.length === 0 && keyName === "esc") {
+    return { cancel: true };
+  }
+  return { combo: [...mods, keyName].join("+") };
+}
+
+function formatComboDisplay(combo) {
+  const parts = combo.split("+");
+  const key = parts[parts.length - 1];
+  const mods = new Set(parts.slice(0, -1));
+  let out = "";
+  if (mods.has("ctrl")) out += "⌃";
+  if (mods.has("opt")) out += "⌥";
+  if (mods.has("shift")) out += "⇧";
+  if (mods.has("cmd")) out += "⌘";
+  const keyPretty = {
+    enter: "↩", esc: "⎋", tab: "⇥", space: "Space",
+    backspace: "⌫", delete: "⌦", up: "↑", down: "↓", left: "←", right: "→"
+  }[key] || key.toUpperCase();
+  return out + keyPretty;
+}
+
+function renderRail() {
+  const list = document.getElementById("navList");
+  const validOrder = STATE.sectionOrder.filter(id => SECTION_META[id]);
+  for (const id of Object.keys(SECTION_META)) {
+    if (!validOrder.includes(id)) validOrder.push(id);
+  }
+  STATE.sectionOrder = validOrder;
+
+  list.innerHTML = validOrder.map(id => {
+    const sec = SECTION_META[id];
+    const active = !STATE.searchQuery && STATE.activeSection === id;
+    return `
+      <div class="nav-row ${active ? "active" : ""}" data-section="${id}" draggable="true">
+        <span class="drag-grip" title="Drag to reorder">≡</span>
+        <span class="nav-label">${escapeHTML(sec.title)}</span>
+        <span class="kbd-hint">${escapeHTML(sec.badge)}</span>
+      </div>
+    `;
+  }).join("");
+
+  list.querySelectorAll(".nav-row").forEach(row => {
+    const secId = row.dataset.section;
+    row.addEventListener("click", (e) => {
+      if (e.target.classList.contains("drag-grip")) return;
+      STATE.searchQuery = "";
+      const searchEl = document.getElementById("settingsSearch");
+      searchEl.value = "";
+      document.getElementById("settingsSearchClear").classList.remove("visible");
+      selectSection(secId);
+    });
+
+    row.addEventListener("dragstart", (e) => {
+      dragSectionId = secId;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", secId);
+    });
+    row.addEventListener("dragend", () => {
+      dragSectionId = null;
+      list.querySelectorAll(".nav-row").forEach(r => r.classList.remove("dragging", "drag-over"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (dragSectionId && dragSectionId !== secId) {
+        row.classList.add("drag-over");
+      }
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      if (!dragSectionId || dragSectionId === secId) return;
+      const order = [...STATE.sectionOrder];
+      const fromIdx = order.indexOf(dragSectionId);
+      const toIdx = order.indexOf(secId);
+      if (fromIdx < 0 || toIdx < 0) return;
+      order.splice(fromIdx, 1);
+      order.splice(toIdx, 0, dragSectionId);
+      STATE.sectionOrder = order;
+      post({ type: "sectionOrder", order });
+      renderRail();
+    });
+  });
+}
+
+function renderGeneralSection() {
+  const zoomPct = Math.round((STATE.pageZoom || 1.0) * 100);
+  return `
+    <div class="section-header">
+      <div>
+        <h1>General</h1>
+        <p class="section-subtitle">Manage local Scrape &amp; Missed Log storage and display zoom.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Scrape &amp; Missed Log Storage</h2>
+      <p class="card-desc">All scrape runs and missed tracks are stored inside one local JSON log instead of separate CSV files. Currently tracking <strong>${STATE.runCount}</strong> saved runs.</p>
+      <div class="path-box">${escapeHTML(STATE.storePath)}</div>
+      <div class="btn-group">
+        <button class="btn" id="revealDataBtn">Reveal in Finder</button>
+        <button class="btn btn-danger" id="clearHistoryBtn">Clear Log History</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between">
+        <div>
+          <h2 class="card-title">Display Zoom</h2>
+          <p class="card-desc" style="margin-bottom:0">Zoom level stays in sync across the main HUD, Settings, and Help windows.</p>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-sm" id="zoomOutBtn">−</button>
+          <span class="kbd-hint" style="font-size:13px;padding:5px 10px">${zoomPct}%</span>
+          <button class="btn btn-sm" id="zoomInBtn">+</button>
+          <button class="btn btn-sm" id="zoomResetBtn">100%</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAppearanceSection() {
+  const isDark = STATE.appearance !== "light";
+  return `
+    <div class="section-header">
+      <div>
+        <h1>Appearance</h1>
+        <p class="section-subtitle">Switch between Midnight Dark and Daybreak Light across every window.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Window Appearance</h2>
+      <p class="card-desc">Applies immediately to the live HUD, Scrape &amp; Missed Log, Settings, and Help windows.</p>
+      <div class="appearance-grid">
+        <button class="theme-card ${isDark ? "selected" : ""}" data-pick-appearance="dark">
+          <div class="theme-preview dark-prev">
+            <div class="prev-bar"><span class="prev-dot"></span><span class="prev-line"></span></div>
+            <div class="prev-blocks"><div class="prev-block"></div><div class="prev-block"></div></div>
+          </div>
+          <div class="theme-meta">
+            <span>Midnight Dark</span>
+            ${isDark ? '<span class="badge">Active</span>' : ""}
+          </div>
+        </button>
+
+        <button class="theme-card ${!isDark ? "selected" : ""}" data-pick-appearance="light">
+          <div class="theme-preview light-prev">
+            <div class="prev-bar"><span class="prev-dot"></span><span class="prev-line"></span></div>
+            <div class="prev-blocks"><div class="prev-block"></div><div class="prev-block"></div></div>
+          </div>
+          <div class="theme-meta">
+            <span>Daybreak Light</span>
+            ${!isDark ? '<span class="badge">Active</span>' : ""}
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between">
+        <div>
+          <h2 class="card-title">Show Git Info in Menu Bar</h2>
+          <p class="card-desc" style="margin-bottom:0">Displays active branch, commit age, and quick worktree switcher on the right side of the menu bar.</p>
+        </div>
+        <label class="switch" title="Show Git Info in Menu Bar">
+          <input type="checkbox" id="worktreeMenuToggle" ${STATE.showWorktreeMenu ? "checked" : ""} />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function renderShortcutRowHTML(act) {
+  const isListening = STATE.recordingActionId === act.id;
+  const chips = (act.combos || []).map((c, idx) => `
+    <span class="combo-chip">
+      <span>${escapeHTML(formatComboDisplay(c))}</span>
+      <button class="combo-remove" data-remove-combo="${escapeHTML(act.id)}" data-combo-index="${idx}" title="Remove shortcut">✕</button>
+    </span>
+  `).join("");
+
+  return `
+    <div class="shortcut-row" data-action-id="${escapeHTML(act.id)}">
+      <div class="shortcut-info">
+        <span class="shortcut-name">${escapeHTML(act.title)}</span>
+        <span class="shortcut-id">${escapeHTML(act.section)}</span>
+      </div>
+      <div class="combo-area">
+        ${chips || '<span class="shortcut-id">No shortcut</span>'}
+        <button class="record-btn ${isListening ? "listening" : ""}" data-record-action="${escapeHTML(act.id)}">
+          ${isListening ? "Press shortcut… (Esc cancels)" : "+ Add Shortcut"}
+        </button>
+        ${act.isCustomized ? `<button class="btn btn-sm" data-reset-action="${escapeHTML(act.id)}">Reset</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function filteredShortcuts() {
+  const q = STATE.shortcutFilter.trim().toLowerCase();
+  if (!q) return STATE.shortcuts;
+  return STATE.shortcuts.filter(act => {
+    const text = [
+      act.title,
+      act.section,
+      act.id,
+      ...(act.combos || []),
+      ...(act.displays || []),
+      ...(act.combos || []).map(formatComboDisplay)
+    ].join(" ").toLowerCase();
+    return text.includes(q);
+  });
+}
+
+function renderShortcutsSection() {
+  const items = filteredShortcuts();
+  const grouped = new Map();
+  for (const act of items) {
+    if (!grouped.has(act.section)) grouped.set(act.section, []);
+    grouped.get(act.section).push(act);
+  }
+
+  let bodyHTML = "";
+  if (items.length === 0) {
+    bodyHTML = `<div class="empty-state">No shortcuts match "${escapeHTML(STATE.shortcutFilter)}".</div>`;
+  } else {
+    for (const [groupName, rows] of grouped.entries()) {
+      bodyHTML += `<div class="shortcut-group-title">${escapeHTML(groupName)}</div>`;
+      bodyHTML += rows.map(renderShortcutRowHTML).join("");
+    }
+  }
+
+  return `
+    <div class="section-header">
+      <div>
+        <h1>Shortcuts</h1>
+        <p class="section-subtitle">Assign multiple key combinations per action. Physical key codes keep ⌥ shortcuts reliable.</p>
+      </div>
+      <button class="btn btn-sm" id="resetAllShortcutsBtn">Reset All Defaults</button>
+    </div>
+
+    <div class="conflict-banner ${STATE.conflictMessage ? "visible" : ""}" id="conflictBanner">
+      ${escapeHTML(STATE.conflictMessage)}
+    </div>
+
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <input
+          id="shortcutFilterInput"
+          class="search-input"
+          type="text"
+          placeholder="Filter shortcuts by action or press ⌘F…"
+          value="${escapeHTML(STATE.shortcutFilter)}"
+          autocorrect="off"
+          autocapitalize="off"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="shortcutFilterClear" class="clear-btn ${STATE.shortcutFilter ? "visible" : ""}" title="Clear filter">✕</button>
+      </div>
+      <button class="press-keys-pill ${STATE.pressKeysFilter ? "active" : ""}" id="pressKeysBtn" title="Press a key combo to filter matching shortcuts">PRESS KEYS</button>
+      <span class="match-count">${items.length} / ${STATE.shortcuts.length}</span>
+    </div>
+
+    ${bodyHTML}
+  `;
+}
+
+function renderURLsSection() {
+  const rows = STATE.urlRoutes.map(r => `
+    <div class="route-card">
+      <div class="route-top">
+        <span class="route-url">${escapeHTML(r.example)}</span>
+        <div class="btn-group">
+          <button class="btn btn-sm" data-copy-url="${escapeHTML(r.example)}">Copy</button>
+          <button class="btn btn-sm btn-primary" data-run-url="${escapeHTML(r.example)}">Run</button>
+        </div>
+      </div>
+      <div class="route-summary">${escapeHTML(r.summary)}</div>
+      <div class="route-params">Parameters: ${escapeHTML(r.params)}</div>
+    </div>
+  `).join("");
+
+  return `
+    <div class="section-header">
+      <div>
+        <h1>URL Commands</h1>
+        <p class="section-subtitle">Local <code>nmr://</code> automation routes for Keyboard Maestro, Raycast, and shell scripts.</p>
+      </div>
+    </div>
+    ${rows}
+  `;
+}
+
+function renderCrossSectionSearch(q) {
+  const term = q.trim().toLowerCase();
+  const blocks = [];
+
+  if (SECTION_META.general.keywords.some(k => k.includes(term) || term.includes(k)) || "clear log history reveal finder zoom".includes(term)) {
+    blocks.push(`<div class="search-match-group"><div class="search-match-badge">General</div>${renderGeneralSection()}</div>`);
+  }
+  if (SECTION_META.appearance.keywords.some(k => k.includes(term) || term.includes(k)) || "dark light daybreak git menu bar".includes(term)) {
+    blocks.push(`<div class="search-match-group"><div class="search-match-badge">Appearance</div>${renderAppearanceSection()}</div>`);
+  }
+
+  const matchedShortcuts = STATE.shortcuts.filter(act =>
+    [act.title, act.section, act.id, ...(act.combos || []), ...(act.combos || []).map(formatComboDisplay)]
+      .join(" ").toLowerCase().includes(term)
+  );
+  if (matchedShortcuts.length > 0 || "shortcuts hotkeys".includes(term)) {
+    blocks.push(`
+      <div class="search-match-group">
+        <div class="search-match-badge">Shortcuts (${matchedShortcuts.length})</div>
+        ${(matchedShortcuts.length ? matchedShortcuts : STATE.shortcuts).map(renderShortcutRowHTML).join("")}
+      </div>
+    `);
+  }
+
+  const matchedRoutes = STATE.urlRoutes.filter(r =>
+    [r.route, r.summary, r.example, r.params].join(" ").toLowerCase().includes(term)
+  );
+  if (matchedRoutes.length > 0 || "url nmr://".includes(term)) {
+    const list = matchedRoutes.length ? matchedRoutes : STATE.urlRoutes;
+    blocks.push(`
+      <div class="search-match-group">
+        <div class="search-match-badge">URL Commands (${list.length})</div>
+        ${list.map(r => `
+          <div class="route-card">
+            <div class="route-top">
+              <span class="route-url">${escapeHTML(r.example)}</span>
+              <div class="btn-group">
+                <button class="btn btn-sm" data-copy-url="${escapeHTML(r.example)}">Copy</button>
+                <button class="btn btn-sm btn-primary" data-run-url="${escapeHTML(r.example)}">Run</button>
+              </div>
+            </div>
+            <div class="route-summary">${escapeHTML(r.summary)}</div>
+            <div class="route-params">Parameters: ${escapeHTML(r.params)}</div>
+          </div>
+        `).join("")}
+      </div>
+    `);
+  }
+
+  if (blocks.length === 0) {
+    return `<div class="empty-state">No settings matched "<strong>${escapeHTML(q)}</strong>".</div>`;
+  }
+  return `
+    <div class="section-header">
+      <div>
+        <h1>Search Results</h1>
+        <p class="section-subtitle">Matching controls across all Settings sections for "${escapeHTML(q)}".</p>
+      </div>
+    </div>
+    ${blocks.join("")}
+  `;
+}
+
+function renderContent() {
+  const root = document.getElementById("contentRoot");
+  const prevFilterFocus = document.activeElement && document.activeElement.id === "shortcutFilterInput";
+  const prevFilterSelStart = prevFilterFocus ? document.activeElement.selectionStart : null;
+
+  if (STATE.searchQuery.trim()) {
+    root.innerHTML = renderCrossSectionSearch(STATE.searchQuery);
+  } else {
+    switch (STATE.activeSection) {
+      case "appearance": root.innerHTML = renderAppearanceSection(); break;
+      case "shortcuts": root.innerHTML = renderShortcutsSection(); break;
+      case "urls": root.innerHTML = renderURLsSection(); break;
+      default: root.innerHTML = renderGeneralSection(); break;
+    }
+  }
+
+  wireDynamicHandlers();
+  if (prevFilterFocus) {
+    const el = document.getElementById("shortcutFilterInput");
+    if (el) {
+      el.focus();
+      if (prevFilterSelStart !== null) {
+        el.setSelectionRange(prevFilterSelStart, prevFilterSelStart);
+      }
+    }
+  }
+  updateScrollFade();
+}
+
+function wireDynamicHandlers() {
+  const revealBtn = document.getElementById("revealDataBtn");
+  if (revealBtn) revealBtn.addEventListener("click", () => post({ type: "revealDataDir" }));
+
+  const clearHistBtn = document.getElementById("clearHistoryBtn");
+  if (clearHistBtn) {
+    clearHistBtn.addEventListener("click", async () => {
+      const ok = await askConfirm({
+        title: "Clear All Scrape & Missed Log History?",
+        subtitle: "This permanently removes saved runs from the in-app log.",
+        tile: "🗑️",
+        facts: [
+          ["Saved runs", `${STATE.runCount} run(s)`],
+          ["File", STATE.storePath],
+          ["Spotify & CSVs", "Existing Spotify playlists and disk folders are not deleted."]
+        ]
+      });
+      if (ok) {
+        post({ type: "clearHistory" });
+        showToast("Log history cleared");
+      }
+    });
+  }
+
+  const zIn = document.getElementById("zoomInBtn");
+  const zOut = document.getElementById("zoomOutBtn");
+  const zReset = document.getElementById("zoomResetBtn");
+  if (zIn) zIn.addEventListener("click", () => post({ type: "zoom", action: "in" }));
+  if (zOut) zOut.addEventListener("click", () => post({ type: "zoom", action: "out" }));
+  if (zReset) zReset.addEventListener("click", () => post({ type: "zoom", action: "reset" }));
+
+  document.querySelectorAll("[data-pick-appearance]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.pickAppearance;
+      setTheme(mode);
+      post({ type: "setAppearance", mode });
+      renderContent();
+    });
+  });
+
+  const wtToggle = document.getElementById("worktreeMenuToggle");
+  if (wtToggle) {
+    wtToggle.addEventListener("change", () => {
+      STATE.showWorktreeMenu = wtToggle.checked;
+      post({ type: "setWorktreeMenu", show: wtToggle.checked });
+    });
+  }
+
+  const filterInput = document.getElementById("shortcutFilterInput");
+  if (filterInput) {
+    filterInput.addEventListener("input", () => {
+      STATE.shortcutFilter = filterInput.value;
+      renderContent();
+    });
+  }
+
+  const filterClear = document.getElementById("shortcutFilterClear");
+  if (filterClear) {
+    filterClear.addEventListener("click", () => {
+      STATE.shortcutFilter = "";
+      STATE.pressKeysFilter = false;
+      renderContent();
+      const inp = document.getElementById("shortcutFilterInput");
+      if (inp) inp.focus();
+    });
+  }
+
+  const pressBtn = document.getElementById("pressKeysBtn");
+  if (pressBtn) {
+    pressBtn.addEventListener("click", () => {
+      STATE.pressKeysFilter = !STATE.pressKeysFilter;
+      STATE.recordingActionId = null;
+      post({ type: "recording", active: STATE.pressKeysFilter });
+      renderContent();
+    });
+  }
+
+  const resetAllBtn = document.getElementById("resetAllShortcutsBtn");
+  if (resetAllBtn) {
+    resetAllBtn.addEventListener("click", () => {
+      STATE.conflictMessage = "";
+      post({ type: "resetAllShortcuts" });
+      showToast("All shortcuts reset to defaults");
+    });
+  }
+
+  document.querySelectorAll("[data-remove-combo]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const actionId = btn.dataset.removeCombo;
+      const idx = Number(btn.dataset.comboIndex);
+      const act = STATE.shortcuts.find(a => a.id === actionId);
+      if (!act) return;
+      const next = [...(act.combos || [])];
+      next.splice(idx, 1);
+      STATE.conflictMessage = "";
+      post({ type: "setCombos", actionId, combos: next });
+    });
+  });
+
+  document.querySelectorAll("[data-record-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.recordAction;
+      STATE.pressKeysFilter = false;
+      STATE.recordingActionId = STATE.recordingActionId === id ? null : id;
+      STATE.conflictMessage = "";
+      post({ type: "recording", active: Boolean(STATE.recordingActionId) });
+      renderContent();
+    });
+  });
+
+  document.querySelectorAll("[data-reset-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      STATE.conflictMessage = "";
+      post({ type: "resetShortcut", actionId: btn.dataset.resetAction });
+    });
+  });
+
+  document.querySelectorAll("[data-copy-url]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const u = btn.dataset.copyUrl;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(u).catch(() => {});
+      }
+      post({ type: "copyText", text: u });
+      showToast("Copied " + u);
+    });
+  });
+
+  document.querySelectorAll("[data-run-url]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      post({ type: "runURL", url: btn.dataset.runUrl });
+    });
+  });
+}
+
+function selectSection(sectionId) {
+  if (!SECTION_META[sectionId]) return;
+  STATE.activeSection = sectionId;
+  STATE.recordingActionId = null;
+  STATE.pressKeysFilter = false;
+  post({ type: "recording", active: false });
+  renderRail();
+  renderContent();
+  document.getElementById("contentScroll").scrollTop = 0;
+}
+
+function updateScrollFade() {
+  const scroller = document.getElementById("contentScroll");
+  const fade = document.getElementById("scrollFade");
+  const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  fade.classList.toggle("visible", remaining > 24);
+}
+
+function askConfirm({ title, subtitle, tile = "⚠️", facts = [] }) {
+  return new Promise(resolve => {
+    confirmResolver = resolve;
+    document.getElementById("confirmTitle").textContent = title;
+    document.getElementById("confirmSubtitle").textContent = subtitle || "";
+    document.getElementById("confirmTile").textContent = tile;
+    document.getElementById("confirmFacts").innerHTML = facts.map(([k, v]) =>
+      `<tr><td>${escapeHTML(k)}</td><td>${escapeHTML(v)}</td></tr>`
+    ).join("");
+    document.getElementById("confirmModal").classList.add("open");
+  });
+}
+
+function resolveConfirm(answer) {
+  const modal = document.getElementById("confirmModal");
+  if (!modal.classList.contains("open")) return;
+  modal.classList.remove("open");
+  const r = confirmResolver;
+  confirmResolver = null;
+  if (r) r(Boolean(answer));
+}
+
+document.getElementById("confirmYesBtn").addEventListener("click", () => resolveConfirm(true));
+document.getElementById("confirmNoBtn").addEventListener("click", () => resolveConfirm(false));
+
+document.getElementById("moreBtn").addEventListener("click", () => {
+  const scroller = document.getElementById("contentScroll");
+  scroller.scrollBy({ top: Math.round(scroller.clientHeight * 0.72), behavior: "smooth" });
+});
+document.getElementById("contentScroll").addEventListener("scroll", updateScrollFade);
+window.addEventListener("resize", updateScrollFade);
+
+document.getElementById("closeSettingsBtn").addEventListener("click", () => post({ type: "close" }));
+
+const settingsSearch = document.getElementById("settingsSearch");
+const settingsSearchClear = document.getElementById("settingsSearchClear");
+settingsSearch.addEventListener("input", () => {
+  STATE.searchQuery = settingsSearch.value;
+  settingsSearchClear.classList.toggle("visible", Boolean(settingsSearch.value));
+  renderRail();
+  renderContent();
+});
+settingsSearchClear.addEventListener("click", () => {
+  STATE.searchQuery = "";
+  settingsSearch.value = "";
+  settingsSearchClear.classList.remove("visible");
+  renderRail();
+  renderContent();
+  settingsSearch.focus();
+});
+
+// Keyboard handling inside Settings window
+window.addEventListener("keydown", (e) => {
+  // Confirm modal keys first
+  if (document.getElementById("confirmModal").classList.contains("open")) {
+    e.preventDefault();
+    const k = e.key.toLowerCase();
+    if (k === "y" || e.key === "Enter") resolveConfirm(true);
+    else if (k === "n" || e.key === "Escape") resolveConfirm(false);
+    return;
+  }
+
+  // Shortcut recording or PRESS KEYS filter
+  if (STATE.recordingActionId || STATE.pressKeysFilter) {
+    e.preventDefault();
+    e.stopPropagation();
+    const parsed = comboFromKeyboardEvent(e);
+    if (!parsed || parsed.pendingModifierOnly) return;
+    if (parsed.cancel) {
+      STATE.recordingActionId = null;
+      STATE.pressKeysFilter = false;
+      post({ type: "recording", active: false });
+      renderContent();
+      return;
+    }
+    const combo = parsed.combo;
+    if (STATE.pressKeysFilter) {
+      STATE.shortcutFilter = combo;
+      STATE.pressKeysFilter = false;
+      post({ type: "recording", active: false });
+      renderContent();
+      return;
+    }
+
+    const actionId = STATE.recordingActionId;
+    STATE.recordingActionId = null;
+    post({ type: "recording", active: false });
+
+    if (RESERVED_COMBOS.has(combo)) {
+      STATE.conflictMessage = `${formatComboDisplay(combo)} is reserved by macOS and cannot be reassigned.`;
+      renderContent();
+      return;
+    }
+    const clash = STATE.shortcuts.find(a => a.id !== actionId && (a.combos || []).includes(combo));
+    if (clash) {
+      STATE.conflictMessage = `${formatComboDisplay(combo)} is already assigned to "${clash.title}". Remove it there first or pick another combo.`;
+      renderContent();
+      return;
+    }
+
+    const act = STATE.shortcuts.find(a => a.id === actionId);
+    const existing = act ? [...(act.combos || [])] : [];
+    if (!existing.includes(combo)) existing.push(combo);
+    STATE.conflictMessage = "";
+    post({ type: "setCombos", actionId, combos: existing });
+    renderContent();
+    return;
+  }
+
+  // Cmd+F focuses Shortcuts filter in place
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    if (STATE.activeSection !== "shortcuts") {
+      STATE.searchQuery = "";
+      settingsSearch.value = "";
+      settingsSearchClear.classList.remove("visible");
+      selectSection("shortcuts");
+    }
+    const inp = document.getElementById("shortcutFilterInput");
+    if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
+
+  // Esc clears search/filter before closing Settings
+  if (e.key === "Escape") {
+    if (STATE.searchQuery) {
+      e.preventDefault();
+      STATE.searchQuery = "";
+      settingsSearch.value = "";
+      settingsSearchClear.classList.remove("visible");
+      renderRail();
+      renderContent();
+      settingsSearch.focus();
+      return;
+    }
+    if (STATE.shortcutFilter) {
+      e.preventDefault();
+      STATE.shortcutFilter = "";
+      renderContent();
+      return;
+    }
+    post({ type: "close" });
+    return;
+  }
+
+  // Ctrl+G / Ctrl+A / Ctrl+H / Ctrl+U section jumps
+  if (e.ctrlKey && !e.metaKey && !e.altKey) {
+    const k = e.key.toLowerCase();
+    const map = { g: "general", a: "appearance", h: "shortcuts", u: "urls" };
+    if (map[k]) {
+      e.preventDefault();
+      STATE.searchQuery = "";
+      settingsSearch.value = "";
+      settingsSearchClear.classList.remove("visible");
+      selectSection(map[k]);
+      return;
+    }
+  }
+});
+
+// Bridges called by Swift
+window.NMRSettings = {
+  hydrate(payload) {
+    if (!payload) return;
+    if (payload.appearance) setTheme(payload.appearance);
+    if (typeof payload.pageZoom === "number") STATE.pageZoom = payload.pageZoom;
+    if (typeof payload.showWorktreeMenu === "boolean") STATE.showWorktreeMenu = payload.showWorktreeMenu;
+    if (Array.isArray(payload.sectionOrder) && payload.sectionOrder.length) STATE.sectionOrder = payload.sectionOrder;
+    if (payload.storePath) STATE.storePath = payload.storePath;
+    if (typeof payload.runCount === "number") STATE.runCount = payload.runCount;
+    if (Array.isArray(payload.shortcuts)) STATE.shortcuts = payload.shortcuts;
+    if (Array.isArray(payload.urlRoutes)) STATE.urlRoutes = payload.urlRoutes;
+    if (payload.section && SECTION_META[payload.section]) {
+      STATE.activeSection = payload.section;
+      STATE.searchQuery = "";
+      settingsSearch.value = "";
+      settingsSearchClear.classList.remove("visible");
+    }
+    const openAct = STATE.shortcuts.find(a => a.id === "openSettings");
+    if (openAct && openAct.displays && openAct.displays.length) {
+      document.getElementById("shortcutSummaryBadge").textContent = openAct.displays[0];
+    }
+    renderRail();
+    renderContent();
+  },
+  selectSection(sectionId) {
+    STATE.searchQuery = "";
+    settingsSearch.value = "";
+    settingsSearchClear.classList.remove("visible");
+    selectSection(sectionId);
+  },
+  focusSearch() {
+    const inp = document.getElementById("settingsSearch");
+    if (inp) {
+      inp.focus();
+      inp.select();
+    }
+  },
+  setTheme(mode) {
+    setTheme(mode);
+    renderContent();
+  },
+  getState() {
+    return {
+      activeSection: STATE.activeSection,
+      appearance: STATE.appearance,
+      pageZoom: STATE.pageZoom,
+      showWorktreeMenu: STATE.showWorktreeMenu,
+      searchQuery: STATE.searchQuery,
+      shortcutCount: STATE.shortcuts.length,
+      urlRouteCount: STATE.urlRoutes.length
+    };
+  }
+};
+
+renderRail();
+renderContent();
+post({ type: "ready" });
+</script>
+</body>
+</html>

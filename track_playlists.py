@@ -1,6 +1,5 @@
 import bootstrap
 import argparse
-import csv
 import json
 import os
 import sys
@@ -57,13 +56,6 @@ def scrape_window(mode):
 # and refreshed automatically on every run. Lives outside the repo on purpose.
 TIDAL_SESSION_FILE = Path.home() / ".config" / "new-music-research" / "tidal-session.json"
 
-
-# Generate output filename with timestamp
-# Format: scraped-files/SCRAPED MM-dd-yy__h.mm.ss a.csv
-os.makedirs("scraped-files", exist_ok=True)
-current_time = datetime.datetime.now().strftime("%m-%d-%y__%I.%M.%S %p")
-output_file = os.path.join("scraped-files", f"SCRAPED {current_time}.csv")
-
 def trigger_km_macro(uuid):
     """Triggers a Keyboard Maestro macro by its UUID using osascript."""
     # Human-readable label for the HUD; the app passes the macro's name in
@@ -96,17 +88,6 @@ def open_spotify_playlist(uri):
         ui.ok(f"Opening playlist in Spotify → [{ui.PRIMARY}]{uri}[/]")
     except Exception as e:
         ui.warn(f"Could not open Spotify automatically: {e}")
-
-
-def read_tracks_csv(path):
-    """Read a scraped/missed CSV into a list of row dicts (empty list on any error)."""
-    rows = []
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            rows = list(csv.DictReader(f))
-    except Exception:
-        pass
-    return rows
 
 
 def load_playlists(filename="playlists.json"):
@@ -283,18 +264,17 @@ def main():
             all_tracks.extend(tracks)
             km.overall(idx + 1, len(playlists))
 
-    # ── PHASE 2 — Dedupe & snapshot ──────────────────────────────────────────
-    ui.phase(2, 3, "DEDUPE & SNAPSHOT")
-    km.phase(2, 3, "DEDUPE & SNAPSHOT")
-    keys = ["Title", "Artist", "Album", "Source Playlist", "Date Added", "Art", "Video Art", "Playlist Count"]
+    # ── PHASE 2 — Dedupe & order ─────────────────────────────────────────────
+    ui.phase(2, 3, "DEDUPE & ORDER")
+    km.phase(2, 3, "DEDUPE & ORDER")
 
     if all_tracks:
         ui.step(f"{len(all_tracks)} recent matches found across all playlists")
         km.current("Dedupe", f"{len(all_tracks)} recent matches found", "working")
 
-        # Remove duplicates based on Artist, Album, Title — but keep score: the
-        # number of distinct source playlists featuring a track is its A&R
-        # popularity signal, and drives the final Spotify playlist order.
+        # Remove duplicates based on Artist, Album, Title while preserving the exact
+        # left-to-right order of playlists in playlists.json and each playlist's
+        # track order. Also record Playlist Count as metadata for the in-app log.
         unique_tracks = []
         featured_on = {}  # track_key -> set of source playlists
         for track in all_tracks:
@@ -308,34 +288,11 @@ def main():
             track_key = (track['Artist'], track['Album'], track['Title'])
             track['Playlist Count'] = len(featured_on[track_key])
 
-        # Most-featured tracks first; the exporter preserves CSV order, so this
-        # is the order of the published playlist. sort() is stable — ties keep
-        # their scrape order.
-        unique_tracks.sort(key=lambda t: t['Playlist Count'], reverse=True)
-
         dupes = len(all_tracks) - len(unique_tracks)
-        ui.ok(f"{len(unique_tracks)} unique tracks "
+        ui.ok(f"{len(unique_tracks)} unique tracks in Tidal playlist order "
               f"[{ui.MUTED}]({dupes} duplicate{'s' if dupes != 1 else ''} removed)[/]")
         km.stats(recent=len(all_tracks), unique=len(unique_tracks), duplicates=dupes)
-        km.log(f"{len(unique_tracks)} unique tracks ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
-
-        multi = [t for t in unique_tracks if t['Playlist Count'] > 1]
-        if multi:
-            top = multi[0]
-            ui.ok(f"Prioritized [bold {ui.PRIMARY}]{len(multi)}[/] multi-playlist "
-                  f"track{'s' if len(multi) != 1 else ''} to the top "
-                  f"[{ui.MUTED}](#1: {top['Title']} — {top['Artist']}, "
-                  f"on {top['Playlist Count']} playlists)[/]")
-            km.log(f"Prioritized {len(multi)} multi-playlist track"
-                   f"{'s' if len(multi) != 1 else ''} — #1: {top['Title']} "
-                   f"({top['Playlist Count']} playlists)")
-
-        # Write to CSV
-        with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            dict_writer = csv.DictWriter(f, fieldnames=keys)
-            dict_writer.writeheader()
-            dict_writer.writerows(unique_tracks)
-        ui.ok(f"Snapshot saved → [{ui.PRIMARY}]{output_file}[/]")
+        km.log(f"{len(unique_tracks)} unique tracks in Tidal URL order ({dupes} duplicate{'s' if dupes != 1 else ''} removed)")
 
         # ── PHASE 3 — Hand off to the Spotify exporter ───────────────────────
         ui.phase(3, 3, "EXPORT TO SPOTIFY")
@@ -349,27 +306,35 @@ def main():
                 "Matching tracks on Spotify and building your playlist — this can take a moment…")
         try:
             # The exporter renders its progress to stderr (streamed live); its
-            # stdout carries only machine-readable data lines — SPOTIFY_URI: and
-            # MISSED_FILE: — which we capture so we can open the playlist and
-            # build the results page.
+            # stdout carries only machine-readable data lines — SPOTIFY_URI:,
+            # PLAYLIST_NAME:, and MISSED_JSON: — which we capture so we can open
+            # the playlist and persist the in-app log.
             # The exporter lives next to this script (which may be the copy bundled
             # inside the app), NOT in the cwd — the cwd is the project/data dir.
             exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "export_to_spotify.py")
             result = subprocess.run(
-                [sys.executable, exporter, output_file, "--mode", args.mode],
+                [sys.executable, exporter, "--stdin", "--mode", args.mode],
+                input=json.dumps(unique_tracks, ensure_ascii=False),
                 check=True,
                 stdout=subprocess.PIPE,
                 text=True,
             )
 
             spotify_uri = ""
-            missed_file = ""
+            playlist_name = ""
+            missed = []
             for line in result.stdout.splitlines():
                 if line.startswith("SPOTIFY_URI:"):
                     spotify_uri = line[len("SPOTIFY_URI:"):].strip()
-                elif line.startswith("MISSED_FILE:"):
-                    missed_file = line[len("MISSED_FILE:"):].strip()
+                elif line.startswith("PLAYLIST_NAME:"):
+                    playlist_name = line[len("PLAYLIST_NAME:"):].strip()
+                elif line.startswith("MISSED_JSON:"):
+                    raw_missed = line[len("MISSED_JSON:"):].strip()
+                    try:
+                        missed = json.loads(raw_missed) if raw_missed else []
+                    except Exception:
+                        missed = []
 
             # Preserve the data contract for any AppleScript launcher watching
             # *our* stdout (e.g. the `do shell script` recipe in the README).
@@ -383,10 +348,25 @@ def main():
             # the working spinner before the results page appears.
             km.clear_busy()
 
-            # Hand the scraped + missed track lists to the progress window so it
-            # can render a results page once the run completes.
-            missed = read_tracks_csv(missed_file) if missed_file else []
+            # Hand the scraped + missed track lists to the progress window and
+            # save this run into the persistent in-app log store (no CSVs).
             km.results(scraped=unique_tracks, missed=missed)
+            km.record_run(
+                mode=args.mode,
+                ok=True,
+                message="Playlist created — opening in Spotify",
+                spotify_uri=spotify_uri,
+                playlist_name=playlist_name,
+                scraped=unique_tracks,
+                missed=missed,
+                stats_dict={
+                    "recent": len(all_tracks),
+                    "unique": len(unique_tracks),
+                    "duplicates": dupes,
+                    "matched": len(unique_tracks) - len(missed),
+                    "omitted": len(missed),
+                },
+            )
 
             # Actually open the freshly created playlist (see open_spotify_playlist).
             if spotify_uri:
@@ -396,19 +376,65 @@ def main():
                       spotify_uri=spotify_uri)
         except subprocess.CalledProcessError as e:
             ui.err(f"Spotify export failed: {e}")
+            missed = []
+            playlist_name = ""
+            spotify_uri = ""
+            for line in (e.stdout or "").splitlines():
+                if line.startswith("MISSED_JSON:"):
+                    try:
+                        missed = json.loads(line[len("MISSED_JSON:"):].strip())
+                    except Exception:
+                        pass
+                elif line.startswith("PLAYLIST_NAME:"):
+                    playlist_name = line[len("PLAYLIST_NAME:"):].strip()
+                elif line.startswith("SPOTIFY_URI:"):
+                    spotify_uri = line[len("SPOTIFY_URI:"):].strip()
+            km.results(scraped=unique_tracks, missed=missed)
+            km.record_run(
+                mode=args.mode,
+                ok=False,
+                message="Spotify export failed",
+                spotify_uri=spotify_uri,
+                playlist_name=playlist_name,
+                scraped=unique_tracks,
+                missed=missed,
+                stats_dict={
+                    "recent": len(all_tracks),
+                    "unique": len(unique_tracks),
+                    "duplicates": dupes,
+                    "matched": len(unique_tracks) - len(missed),
+                    "omitted": len(missed),
+                },
+            )
             km.finish(ok=False, message="Spotify export failed")
         except Exception as e:
             ui.err(f"An error occurred during export: {e}")
+            km.results(scraped=unique_tracks, missed=[])
+            km.record_run(
+                mode=args.mode,
+                ok=False,
+                message=f"Export error: {e}",
+                scraped=unique_tracks,
+                missed=[],
+                stats_dict={
+                    "recent": len(all_tracks),
+                    "unique": len(unique_tracks),
+                    "duplicates": dupes,
+                },
+            )
             km.finish(ok=False, message="An error occurred during export")
 
     else:
         ui.warn(f"No matching tracks found ({window_desc}).")
+        km.record_run(
+            mode=args.mode,
+            ok=True,
+            message=f"No new tracks found ({window_desc})",
+            scraped=[],
+            missed=[],
+            stats_dict={"recent": 0, "unique": 0, "duplicates": 0, "matched": 0, "omitted": 0},
+        )
         km.finish(ok=True, message=f"No new tracks found ({window_desc})")
-        # Create empty CSV with headers just in case
-        with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            dict_writer = csv.DictWriter(f, fieldnames=keys)
-            dict_writer.writeheader()
-        ui.info(f"Created empty snapshot → {output_file}")
 
     # Fire the "Open Results" KM macro — but ONLY when a playlist was actually
     # created. Failed, empty, and aborted runs end quietly on their HUD card,

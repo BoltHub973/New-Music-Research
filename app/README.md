@@ -25,12 +25,12 @@ launch app
    │
    ├─ spawn:  python3 <app bundle>/Resources/pipeline/track_playlists.py   (cwd = <project>)
    │             │        code: bundled at build time → always matches the app
-   │             │        data: playlists.json, .env, .cache, scraped-files/ … from cwd
-   │             └─ km_progress.py writes ~/.config/new-music-research/progress.json (atomic)
+   │             │        data: playlists.json, .env, .cache, generated-artwork/ from cwd
+   │             ├─ km_progress.py writes ~/.config/new-music-research/progress.json (atomic)
+   │             └─ saves scraped + missed run history to ~/Library/Application Support/New Music Research/history.json
    │
-   └─ WKWebView loads bundled progress_window.html
-          └─ a `window.KeyboardMaestro` shim feeds it the polled progress file
-             (so the HUD HTML is byte-for-byte the same file KM used)
+   └─ WKWebView loads bundled progress_window.html & settings.html
+          └─ View ▸ Toggle Scrape & Missed Log (⌘L), Appearance (⌘⇧L), Settings (⌘,), nmr:// URLs
 ```
 
 The **code/data split** is the point: `build.sh` copies the Python pipeline into
@@ -71,14 +71,18 @@ ad-hoc signs. Python changes require a rebuild to reach the installed app.
 Every macro firing is reported in the HUD — as an activity-log line during the run
 and a `⌨ Keyboard Maestro ▸ <macro name>` line on the completion card.
 
-## Menu shortcuts
+## Menu & App Shortcuts
 
+- **⌘L** — View ▸ Toggle Scrape & Missed Log (also `nmr://log`)
+- **⌘⇧L** — View ▸ Toggle Light / Dark Appearance (also `nmr://appearance?mode=toggle`)
+- **⌘,** — Settings… (`General`, `Appearance`, `Shortcuts`, `URL Commands`; `⌥⌘,` toggles)
+- **⌘⇧N** — File ▸ New Window
 - **⌘1** — Scrape ▸ This Week (today + this week — the rolling 7-day window; also what launching the app runs)
 - **⌘2** — Scrape ▸ Last Week (previous calendar week, Mon → Sun; orange `🟠 DX LAST WEEK` playlist)
-- **⌘+ / ⌘- / ⌘0** — Zoom In / Out / Actual Size (persisted across launches)
+- **⌘= / ⌘- / ⌘0** — Zoom In / Out / Actual Size (synced across Main, Settings, and Help windows)
 - **⌘R** — Run again (re-runs the pipeline in place, repeating the last-used scrape mode)
 - **⌥⌘I** — Inspect Element (Web Inspector)
-- **⌘W / ⌘Q** — Close / Quit
+- **⌘W / ⌘Q** — Close Window / Quit
 - **Help ▸ Keyboard Maestro Firing Rules** — table of which KM macro fires for
   each outcome (playlist created / failed / empty / aborted / no-scrape) with UUIDs
 

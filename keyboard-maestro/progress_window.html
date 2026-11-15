@@ -11,15 +11,59 @@
 <style>
   :root{
     --void:#000; --abyss:#050508; --surface:#111118; --elevated:#1a1a24; --raised:#222230;
-    --text:#e8e8f0; --muted:#8888a0; --ghost:#555570;
+    --border:rgba(255,255,255,.10); --border-soft:rgba(255,255,255,.06);
+    --text:#e8e8f0; --muted:#8888a0; --ghost:#686882;
     --cyan:#00f0ff; --cyan-glow:rgba(0,240,255,.16);
     --violet:#c084fc; --violet-glow:rgba(192,132,252,.16);
     --magenta:#ff4fd8;
     --ok:#00ff88; --warn:#f5a623; --err:#ff3366;
     --track:#222230;
+    --panel-bg:rgba(10,10,16,.58);
+    --phase-bg:rgba(17,17,24,.62);
+    --scrim-bg:
+      radial-gradient(ellipse at 50% 42%, rgba(5,5,8,.30) 0%, rgba(5,5,8,.62) 74%),
+      linear-gradient(180deg, rgba(5,5,8,.46) 0%, rgba(5,5,8,.60) 50%, rgba(5,5,8,.86) 100%);
     /* hero column width — bounded by BOTH viewport axes so the square art
        never starves the panel of height on short windows */
     --hero-w:clamp(270px, min(30vw, 52vh), 500px);
+  }
+  html[data-theme="light"]{
+    --void:#ffffff; --abyss:#f3f5f9; --surface:#ffffff; --elevated:#eef2f7; --raised:#e2e8f0;
+    --border:rgba(15,23,42,.12); --border-soft:rgba(15,23,42,.08);
+    --text:#0f172a; --muted:#475569; --ghost:#64748b;
+    --cyan:#0284c7; --cyan-glow:rgba(2,132,199,.16);
+    --violet:#7c3aed; --violet-glow:rgba(124,58,237,.14);
+    --magenta:#db2777;
+    --ok:#15803d; --warn:#b45309; --err:#dc2626;
+    --track:#dbe4ee;
+    --panel-bg:rgba(255,255,255,.86);
+    --phase-bg:rgba(255,255,255,.84);
+    --scrim-bg:
+      radial-gradient(ellipse at 50% 42%, rgba(243,245,249,.72) 0%, rgba(243,245,249,.92) 74%),
+      linear-gradient(180deg, rgba(243,245,249,.82) 0%, rgba(243,245,249,.92) 100%);
+  }
+  html[data-theme="light"] .bg.mesh{
+    background:
+      radial-gradient(ellipse at 18% 12%, rgba(2,132,199,.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 20%, rgba(124,58,237,.08) 0%, transparent 55%),
+      var(--abyss);
+  }
+  html[data-theme="light"] .bg.grid{
+    background-image:
+      linear-gradient(rgba(15,23,42,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15,23,42,.035) 1px, transparent 1px);
+  }
+  html[data-theme="light"] .wtile img{filter:saturate(.8) brightness(.95); opacity:.28;}
+  html[data-theme="light"] .result-col{background:rgba(255,255,255,.84); border-color:var(--border);}
+  html[data-theme="light"] .panel{box-shadow:0 10px 30px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.7);}
+  html[data-theme="light"] .done-card{background:rgba(21,128,61,.08);}
+  html[data-theme="light"] .done-card.fail{background:rgba(220,38,38,.08);}
+  html[data-theme="light"] button.primary{color:#ffffff;}
+  html[data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(15,23,42,.18);}
+  html[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(15,23,42,.3);}
+
+  html.animations-paused *, html[data-occluded="1"] *{
+    animation-play-state:paused !important;
   }
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
@@ -68,9 +112,7 @@
     box-shadow:0 0 18px var(--cyan-glow), inset 0 0 16px var(--cyan-glow);
     animation:ping 1.5s ease-out both;}
   .bg.scrim{
-    background:
-      radial-gradient(ellipse at 50% 42%, rgba(5,5,8,.30) 0%, rgba(5,5,8,.62) 74%),
-      linear-gradient(180deg, rgba(5,5,8,.46) 0%, rgba(5,5,8,.60) 50%, rgba(5,5,8,.86) 100%);
+    background:var(--scrim-bg);
   }
   .bg.grid{
     background-image:
@@ -81,25 +123,43 @@
     -webkit-mask-image:radial-gradient(ellipse at 50% 35%, #000 0%, transparent 80%);
   }
 
-  .wrap{position:relative; z-index:1; padding:40px 62px 40px; width:100%; max-width:1760px;
+  .wrap{position:relative; z-index:1; padding:36px 56px 34px; width:100%; max-width:1760px;
     margin:0 auto; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
 
-  /* ── header: title left, phase rail right ── */
-  header{display:flex; align-items:flex-start; justify-content:space-between; gap:16px 30px;
+  /* ── header: title left, utility controls + phase rail right ── */
+  header{display:flex; align-items:flex-start; justify-content:space-between; gap:16px 24px;
     flex-wrap:wrap;}
+  .header-right{display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end;}
+  .hdr-tools{display:flex; align-items:center; gap:9px;}
+  .hdr-btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:9px 14px; border-radius:10px;
+    border:1px solid var(--border); background:var(--phase-bg);
+    color:var(--text); font-family:'JetBrains Mono',monospace;
+    font-size:.76rem; font-weight:600; letter-spacing:.05em;
+    cursor:pointer; box-shadow:none; backdrop-filter:blur(12px);
+    transition:border-color .2s ease, background .2s ease, color .2s ease;
+  }
+  .hdr-btn:hover{border-color:var(--cyan); background:var(--cyan-glow); box-shadow:none;}
+  .hdr-btn.active{border-color:var(--cyan); background:var(--cyan-glow); color:var(--cyan);}
+  .hdr-btn.icon-only{width:38px; height:38px; padding:0; justify-content:center; font-size:1.05rem;}
+  .hdr-kbd{
+    font-size:.68rem; padding:2px 6px; border-radius:6px;
+    background:var(--raised); border:1px solid var(--border); color:var(--muted);
+  }
   .title{
-    font-family:'Michroma',sans-serif; font-size:2.1rem; letter-spacing:.16em;
-    color:var(--cyan); margin:0; white-space:nowrap;
+    font-family:'Michroma',sans-serif; font-size:2.05rem; letter-spacing:.16em;
+    color:var(--cyan); margin:0;
     text-shadow:0 0 10px var(--cyan-glow), 0 0 34px var(--cyan-glow);
   }
   .subtitle{font-size:.92rem; letter-spacing:.22em; color:var(--violet); margin-top:8px; text-transform:uppercase;}
   .subtitle.lastweek{color:#fb923c;}
 
-  .phases{display:flex; gap:12px; margin-top:6px;}
+  .phases{display:flex; gap:12px; margin-top:2px;}
   .phases.hidden{display:none;}
   .phase{
-    border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:12px 18px;
-    background:rgba(17,17,24,.55); backdrop-filter:blur(14px);
+    border:1px solid var(--border); border-radius:12px; padding:11px 16px;
+    background:var(--phase-bg); backdrop-filter:blur(14px);
     display:flex; align-items:center; gap:11px; transition:border-color .3s, box-shadow .3s, background .3s;
   }
   .phase .idx{
@@ -157,7 +217,7 @@
   /* once a run has finished, an empty name must not claim "Standing by" */
   .stage.failed-mode .hero-name:empty::before{content:none;}
   .hero-detail{font-family:'JetBrains Mono',monospace; font-size:.95rem; color:var(--muted);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-height:1.5em;}
+    overflow-wrap:anywhere; min-height:1.5em;}
   .hero-status{display:flex; align-items:center; gap:11px;
     font-family:'JetBrains Mono',monospace; font-size:.78rem; letter-spacing:.18em;
     color:var(--muted); text-transform:uppercase;}
@@ -167,14 +227,14 @@
   /* ── progress panel ── */
   .panel{
     min-height:0; min-width:0; display:flex; flex-direction:column;
-    border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:30px 38px;
-    background:rgba(10,10,16,.52); backdrop-filter:blur(22px) saturate(160%);
+    border:1px solid var(--border); border-radius:18px; padding:30px 38px;
+    background:var(--panel-bg); backdrop-filter:blur(22px) saturate(160%);
     box-shadow:0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
   }
   .row{display:flex; align-items:baseline; justify-content:space-between; gap:16px;}
   .row .k{font-family:'JetBrains Mono',monospace; font-size:.82rem; letter-spacing:.14em;
     color:var(--muted); text-transform:uppercase;
-    flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    flex:1 1 auto; min-width:0; overflow-wrap:anywhere;}
   .counts{font-family:'Orbitron',sans-serif; font-variant-numeric:tabular-nums; color:var(--text); flex:0 0 auto;}
   .counts .n{color:var(--cyan); font-weight:700;}
   .pct{font-family:'Orbitron',sans-serif; font-weight:900; color:var(--cyan);
@@ -280,14 +340,13 @@
   .artgrid .cap{position:absolute; inset:auto 0 0 0; padding:30px 11px 9px;
     background:linear-gradient(180deg, transparent, rgba(0,0,0,.9) 64%);}
   .artgrid .t{font-weight:600; font-size:.92rem; line-height:1.3; color:#fff;
-    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
-    hyphens:none; overflow-wrap:normal; word-break:normal;}
+    overflow-wrap:anywhere;}
   .artgrid .a{display:block; font-family:'JetBrains Mono',monospace; font-size:.74rem;
-    color:rgba(232,232,240,.78); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
+    color:rgba(232,232,240,.84); overflow-wrap:anywhere; margin-top:2px;}
   .artgrid .src{display:block; font-family:'JetBrains Mono',monospace; font-size:.74rem;
-    color:var(--violet); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    color:var(--violet); overflow-wrap:anywhere;
     max-height:0; opacity:0; transition:max-height .25s ease, opacity .25s ease;}
-  .artgrid li:hover .src{max-height:1.6em; opacity:1;}
+  .artgrid li:hover .src{max-height:4em; opacity:1;}
   .artgrid li.empty, .tracklist li.empty{color:var(--ghost); height:auto; padding:16px 2px;
     font-style:italic; border:none; background:none; grid-column:1/-1; animation:none;
     display:block; overflow:visible;}
@@ -296,7 +355,7 @@
      without artwork, listed under the mosaic) */
   .tracklist{list-style:none; margin:0; padding:0; overflow-y:auto; flex:1 1 auto; min-height:0;}
   .tracklist.plain{overflow:visible; flex:none; min-height:0; margin-top:8px;}
-  .tracklist li{padding:8px 2px; border-bottom:1px solid rgba(255,255,255,.05);
+  .tracklist li{padding:8px 2px; border-bottom:1px solid var(--border-soft);
     display:flex; gap:13px; align-items:center;}
   .thumb{width:54px; height:54px; flex:0 0 54px; border-radius:8px; overflow:hidden;
     background:var(--raised); border:1px solid rgba(255,51,102,.28);
@@ -304,10 +363,8 @@
   .thumb img{width:100%; height:100%; object-fit:cover; filter:saturate(.55);}
   .thumb svg{width:55%; height:55%;}
   .tracklist li .txt{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px;}
-  .tracklist li .t{color:var(--text); font-weight:600; font-size:1.02rem;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .tracklist li .a{font-family:'JetBrains Mono',monospace; font-size:.82rem; color:var(--muted);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .tracklist li .t{color:var(--text); font-weight:600; font-size:1.02rem; overflow-wrap:anywhere;}
+  .tracklist li .a{font-family:'JetBrains Mono',monospace; font-size:.82rem; color:var(--muted); overflow-wrap:anywhere;}
   .tracklist li .a .src{color:var(--violet);}
 
   /* done card */
@@ -402,8 +459,178 @@
     .artgrid{grid-template-columns:repeat(auto-fill, minmax(108px,1fr)); gap:9px;}
     .done-card{padding:13px 18px; margin-top:12px;}
     .actions{margin-top:10px;}
-    .km-fired{margin-top:6px; font-size:.8rem;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .km-fired{margin-top:6px; font-size:.8rem; overflow-wrap:anywhere;}
+  }
+
+  /* ── In-App Scrape & Missed Log View (⌘L) ── */
+  body.log-open .stage{display:none !important;}
+  body.log-open .log-view{display:grid !important;}
+  body.log-open .phases{display:none !important;}
+
+  .log-view{
+    display:none;
+    flex:1 1 auto; min-height:0; margin-top:22px;
+    grid-template-columns:340px minmax(0, 1fr); gap:22px;
+  }
+  .log-sidebar, .log-main{
+    display:flex; flex-direction:column; min-height:0; min-width:0;
+    border:1px solid var(--border); border-radius:18px;
+    background:var(--panel-bg); backdrop-filter:blur(22px) saturate(160%);
+    overflow:hidden;
+  }
+  .log-side-head, .log-main-head{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:16px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .log-side-title{
+    font-family:'JetBrains Mono',monospace; font-size:.78rem;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0;
+  }
+  .log-runs{
+    flex:1 1 auto; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;
+  }
+  .run-card{
+    text-align:left; width:100%; padding:12px 14px; border-radius:12px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text);
+    box-shadow:none; font-family:'DM Sans',system-ui,sans-serif; letter-spacing:0;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .run-card:hover{border-color:var(--cyan); background:var(--elevated); box-shadow:none;}
+  .run-card.selected{border-color:var(--cyan); background:var(--cyan-glow);}
+  .run-card-top{display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;}
+  .run-mode{
+    font-family:'JetBrains Mono',monospace; font-size:.7rem; font-weight:700;
+    text-transform:uppercase; padding:2px 7px; border-radius:6px;
+    background:var(--raised); color:var(--violet); border:1px solid var(--border);
+  }
+  .run-mode.lastweek{color:#fb923c;}
+  .run-time{font-family:'JetBrains Mono',monospace; font-size:.72rem; color:var(--muted);}
+  .run-title{font-weight:700; font-size:.92rem; color:var(--text); overflow-wrap:anywhere;}
+  .run-badges{display:flex; gap:8px; flex-wrap:wrap; font-family:'JetBrains Mono',monospace; font-size:.72rem;}
+  .r-pill{padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--elevated);}
+  .r-pill.ok{color:var(--ok); border-color:rgba(0,255,136,.35);}
+  .r-pill.miss{color:var(--err); border-color:rgba(255,51,102,.35);}
+  .r-pill.fail{color:var(--err); border-color:rgba(255,51,102,.45);}
+
+  .log-main-title{margin:0; font-size:1.25rem; font-weight:700; color:var(--text); overflow-wrap:anywhere;}
+  .log-main-meta{font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--muted); margin-top:3px;}
+  .log-controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .log-stats-bar{
+    display:flex; gap:18px; flex-wrap:wrap; padding:12px 20px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .lstat{display:flex; align-items:baseline; gap:7px; font-family:'JetBrains Mono',monospace;}
+  .lstat .v{font-family:'Orbitron',sans-serif; font-weight:700; font-size:1.1rem; color:var(--cyan);}
+  .lstat.miss .v{color:var(--err);}
+  .lstat.ok .v{color:var(--ok);}
+  .lstat .l{font-size:.72rem; text-transform:uppercase; color:var(--muted);}
+
+  .log-filter-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .tab-pills{display:flex; gap:6px;}
+  .tab-pill{
+    padding:6px 12px; border-radius:8px; border:1px solid var(--border);
+    background:var(--surface); color:var(--muted); box-shadow:none;
+    font-family:'JetBrains Mono',monospace; font-size:.74rem;
+  }
+  .tab-pill:hover{border-color:var(--cyan); color:var(--text); box-shadow:none;}
+  .tab-pill.active{border-color:var(--cyan); background:var(--cyan-glow); color:var(--cyan);}
+
+  .log-search-wrap{position:relative; flex:1 1 240px; max-width:440px;}
+  .log-search-input{
+    width:100%; padding:7px 30px 7px 12px; border-radius:9px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text);
+    font-family:'DM Sans',system-ui,sans-serif; font-size:.86rem; outline:none;
+  }
+  .log-search-input:focus{border-color:var(--cyan);}
+  .log-search-clear{
+    position:absolute; right:7px; top:50%; transform:translateY(-50%);
+    width:20px; height:20px; padding:0; border:none; border-radius:50%;
+    background:var(--raised); color:var(--muted); box-shadow:none;
+    font-size:.7rem; display:none; align-items:center; justify-content:center;
+  }
+  .log-search-clear.visible{display:inline-flex;}
+
+  .log-track-list{
+    flex:1 1 auto; min-height:0; overflow-y:auto; padding:12px 20px 24px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .log-track-row{
+    display:flex; align-items:center; gap:14px; padding:10px 14px;
+    border-radius:12px; border:1px solid var(--border-soft); background:var(--surface);
+  }
+  .log-track-row.is-missed{border-color:rgba(255,51,102,.32);}
+  .log-track-body{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:3px;}
+  .log-track-title{font-weight:700; font-size:.96rem; color:var(--text); overflow-wrap:anywhere;}
+  .log-track-meta{font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--muted); overflow-wrap:anywhere;}
+  .log-track-tags{display:flex; gap:8px; flex-wrap:wrap; margin-top:2px; font-family:'JetBrains Mono',monospace; font-size:.7rem;}
+  .log-tag{padding:2px 7px; border-radius:6px; background:var(--raised); color:var(--muted);}
+  .log-tag.src{color:var(--violet);}
+  .log-tag.miss{color:var(--err); background:rgba(255,51,102,.12);}
+  .log-tag.scraped{color:var(--ok); background:rgba(0,255,136,.10);}
+  .btn-mini{
+    padding:6px 11px; border-radius:8px; font-size:.74rem; box-shadow:none;
+    border:1px solid var(--border); background:var(--elevated); color:var(--text);
+  }
+  .btn-mini:hover{border-color:var(--cyan); background:var(--cyan-glow); box-shadow:none;}
+  .btn-danger-sm{
+    padding:6px 12px; border-radius:8px; font-size:.74rem; box-shadow:none;
+    border:1px solid rgba(255,51,102,.42); background:rgba(255,51,102,.10); color:var(--err);
+  }
+  .btn-danger-sm:hover{background:rgba(255,51,102,.22); box-shadow:none;}
+
+  @media (max-width:980px){
+    .log-view{grid-template-columns:1fr; grid-template-rows:230px minmax(0,1fr);}
+  }
+
+  /* ── NAGA Large Confirmation Modal (never native confirm/NSAlert) ── */
+  .naga-modal-backdrop{
+    position:fixed; inset:0; z-index:990; display:none;
+    align-items:center; justify-content:center; padding:24px;
+    background:rgba(4,6,10,.76); backdrop-filter:blur(10px);
+  }
+  .naga-modal-backdrop.open{display:flex;}
+  .naga-modal-card{
+    width:min(720px, 100%); border-radius:20px; padding:28px;
+    background:var(--surface); border:1px solid var(--border);
+    box-shadow:0 24px 64px rgba(0,0,0,.6);
+  }
+  .naga-modal-head{display:flex; align-items:center; gap:16px; margin-bottom:16px;}
+  .naga-modal-tile{
+    width:52px; height:52px; border-radius:14px; flex:0 0 52px;
+    display:grid; place-items:center; font-size:1.5rem;
+    background:var(--cyan-glow); border:1px solid var(--cyan);
+  }
+  .naga-modal-tile.warn{background:rgba(245,166,35,.16); border-color:var(--warn);}
+  .naga-modal-tile.danger{background:rgba(255,51,102,.16); border-color:var(--err);}
+  .naga-modal-title{margin:0; font-size:1.3rem; font-weight:700; color:var(--text);}
+  .naga-modal-sub{margin:4px 0 0; font-size:.92rem; color:var(--muted); overflow-wrap:anywhere;}
+  .naga-facts{width:100%; border-collapse:collapse; margin:14px 0 22px; font-size:.88rem;}
+  .naga-facts td{padding:9px 10px; border-bottom:1px solid var(--border-soft); vertical-align:top; overflow-wrap:anywhere;}
+  .naga-facts td:first-child{width:165px; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:.78rem; text-transform:uppercase;}
+  .naga-modal-actions{display:flex; justify-content:flex-end; gap:12px;}
+
+  .app-toast{
+    position:fixed; right:24px; bottom:24px; z-index:995;
+    padding:9px 16px; border-radius:10px; border:1px solid var(--cyan);
+    background:var(--surface); color:var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:.8rem;
+    opacity:0; pointer-events:none; transition:opacity .16s ease;
+  }
+  .app-toast.show{opacity:1;}
+
+  /* Pause infinite HUD compositor/repaint loops when idle (Standing by), done, or viewing the Log */
+  body.is-idle .spin,
+  body.is-idle .bar .fill::after,
+  body.is-idle .bar.indeterminate .fill,
+  body.is-idle .artwall-pan,
+  body.log-open .spin,
+  body.log-open .bar .fill::after,
+  body.log-open .bar.indeterminate .fill,
+  body.log-open .artwall-pan {
+    animation-play-state:paused !important;
   }
 
   /* No prefers-reduced-motion fallback ON PURPOSE: Adrian runs macOS Reduce
@@ -411,7 +638,7 @@
      Don't re-add a reduced-motion block here. */
 </style>
 </head>
-<body data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
+<body class="is-idle" data-kmwindow="SCREEN(Main,Left),SCREEN(Main,Top),SCREEN(Main,Width),SCREEN(Main,Height)">
   <div class="bg mesh"></div>
   <div class="artwall" aria-hidden="true"><div class="artwall-pan" id="artwall"></div></div>
   <div class="bg scrim"></div>
@@ -434,10 +661,20 @@
         <h1 class="title">DX&nbsp;BROADCAST&nbsp;SYSTEM</h1>
         <div class="subtitle" id="subtitle">This Week</div>
       </div>
-      <div class="phases hidden" id="phases">
-        <div class="phase" data-p="1"><div class="idx">1</div><div class="lbl">Scrape Tidal</div></div>
-        <div class="phase" data-p="2"><div class="idx">2</div><div class="lbl">Dedupe</div></div>
-        <div class="phase" data-p="3"><div class="idx">3</div><div class="lbl">Export to Spotify</div></div>
+      <div class="header-right">
+        <div class="phases hidden" id="phases">
+          <div class="phase" data-p="1"><div class="idx">1</div><div class="lbl">Scrape Tidal</div></div>
+          <div class="phase" data-p="2"><div class="idx">2</div><div class="lbl">Dedupe</div></div>
+          <div class="phase" data-p="3"><div class="idx">3</div><div class="lbl">Export to Spotify</div></div>
+        </div>
+        <div class="hdr-tools">
+          <button id="logNavBtn" class="hdr-btn" type="button" title="Toggle Scrape &amp; Missed Log (⌘L)">
+            <span>Scrape &amp; Missed Log</span>
+            <span class="hdr-kbd" id="logShortcutHint">⌘L</span>
+          </button>
+          <button id="appearanceBtn" class="hdr-btn icon-only" type="button" title="Switch to Light Appearance (⌘⇧L)" aria-label="Toggle Appearance">☀️</button>
+          <button id="settingsNavBtn" class="hdr-btn icon-only" type="button" title="Settings (⌘,)" aria-label="Settings">⚙️</button>
+        </div>
       </div>
     </header>
 
@@ -514,7 +751,72 @@
         </div>
       </div>
     </div>
+
+    <!-- In-App Scrape & Missed Log View -->
+    <section class="log-view" id="logView" aria-label="Scrape and Missed Log">
+      <aside class="log-sidebar">
+        <div class="log-side-head">
+          <h2 class="log-side-title">Run History <span id="logTotalRuns"></span></h2>
+          <button id="clearAllLogBtn" class="btn-danger-sm" type="button">Clear All</button>
+        </div>
+        <div class="log-runs" id="logRunsList"></div>
+      </aside>
+      <div class="log-main">
+        <div class="log-main-head">
+          <div>
+            <h2 class="log-main-title" id="logRunTitle">Select a run</h2>
+            <div class="log-main-meta" id="logRunMeta"></div>
+          </div>
+          <div class="log-controls">
+            <button id="logOpenSpotifyBtn" class="primary" type="button" style="display:none;"><svg class="sp-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.5 17.3c-.22.36-.68.47-1.04.25-2.85-1.74-6.44-2.13-10.66-1.17-.41.1-.82-.16-.91-.57-.1-.41.16-.82.57-.91 4.62-1.06 8.58-.6 11.78 1.36.37.22.48.68.26 1.04zm1.47-3.27c-.28.45-.86.59-1.31.32-3.26-2-8.23-2.58-12.09-1.41-.5.15-1.04-.13-1.19-.63-.15-.5.13-1.04.64-1.2 4.41-1.34 9.89-.69 13.63 1.61.45.28.59.86.32 1.31zm.13-3.4C15.24 8.31 8.82 8.09 5.09 9.22c-.6.18-1.23-.16-1.41-.75-.18-.6.15-1.23.75-1.41 4.29-1.3 11.4-1.05 15.9 1.62.54.32.72 1.02.4 1.55-.32.54-1.02.72-1.55.4z"/></svg>Open in Spotify</button>
+            <button id="deleteRunBtn" class="btn-danger-sm" type="button" style="display:none;">Delete Run</button>
+            <button id="backToHudBtn" class="btn-mini" type="button">Back to HUD</button>
+          </div>
+        </div>
+        <div class="log-stats-bar" id="logStatsBar"></div>
+        <div class="log-filter-bar">
+          <div class="tab-pills">
+            <button class="tab-pill active" type="button" data-log-tab="all">All</button>
+            <button class="tab-pill" type="button" data-log-tab="missed">Missed</button>
+            <button class="tab-pill" type="button" data-log-tab="scraped">Scraped</button>
+          </div>
+          <div class="log-search-wrap">
+            <input
+              id="logSearchInput"
+              class="log-search-input"
+              type="text"
+              placeholder="Filter tracks by title, artist, album, or playlist…"
+              autocorrect="off"
+              autocapitalize="off"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="logSearchClear" class="log-search-clear" type="button" title="Clear search">✕</button>
+          </div>
+        </div>
+        <div class="log-track-list" id="logTracksList"></div>
+      </div>
+    </section>
   </div>
+
+  <!-- NAGA Confirmation Modal (replaces native NSAlert / window.confirm) -->
+  <div class="naga-modal-backdrop" id="nagaModal" role="dialog" aria-modal="true">
+    <div class="naga-modal-card">
+      <div class="naga-modal-head">
+        <div class="naga-modal-tile" id="nagaModalTile">🎵</div>
+        <div>
+          <h2 class="naga-modal-title" id="nagaModalTitle">Confirm</h2>
+          <p class="naga-modal-sub" id="nagaModalSub"></p>
+        </div>
+      </div>
+      <table class="naga-facts" id="nagaModalFacts"></table>
+      <div class="naga-modal-actions">
+        <button id="nagaModalNo" class="btn-mini" type="button">No (N / Esc)</button>
+        <button id="nagaModalYes" class="primary" type="button">Yes (Y / ↩)</button>
+      </div>
+    </div>
+  </div>
+  <div class="app-toast" id="appToast"></div>
 
 <script>
   // Dev harness: open this file directly in a browser with ?demo (or ?demo=fail /
@@ -811,6 +1113,8 @@
     var finished = false;
     function render(s){
       // subtitle — names the scrape window this run covers
+      var isActiveRun = ((s.phase >= 1) && !s.done) || (!!s.busy && !s.done);
+      document.body.classList.toggle('is-idle', !isActiveRun);
       var lastWeek = s.mode === 'last-week';
       els.subtitle.textContent = lastWeek ? 'Last Week' : 'This Week';
       els.subtitle.classList.toggle('lastweek', lastWeek);
@@ -954,8 +1258,465 @@
         }
       }catch(e){}
     }
+    window.__nmrOnPayload = poll;
     poll();
-    setInterval(poll, 300);
+    if (!window.__nmrShimInstalled) {
+      setInterval(poll, 300);
+    }
+
+    // ── Native App Bridge, In-App Scrape & Missed Log, Appearance & NAGA Confirm ──
+    function postHost(msg){
+      try{
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nmr) {
+          window.webkit.messageHandlers.nmr.postMessage(msg);
+        }
+      }catch(e){}
+    }
+
+    function esc(str){
+      return String(str == null ? '' : str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function showToast(msg){
+      var el = document.getElementById('appToast');
+      if(!el) return;
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(el._t);
+      el._t = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+    }
+
+    // Relative time formatter with MM-DD-YY h:mm AM hover tooltip
+    function ago(tsSeconds){
+      var sec = Math.max(0, Math.floor((Date.now()/1000) - Number(tsSeconds || 0)));
+      if (sec < 60) return 'just now';
+      var min = Math.floor(sec / 60);
+      if (min < 60) return min + 'm ago';
+      var hr = Math.floor(min / 60);
+      if (hr < 24) return hr + 'h ago';
+      var days = Math.floor(hr / 24);
+      if (days === 1) return 'yesterday';
+      if (days < 30) return days + 'd ago';
+      var d = new Date(Number(tsSeconds || 0) * 1000);
+      return formatFullDate(tsSeconds);
+    }
+
+    function formatFullDate(tsSeconds){
+      var d = new Date(Number(tsSeconds || 0) * 1000);
+      var mm = String(d.getMonth() + 1).padStart(2, '0');
+      var dd = String(d.getDate()).padStart(2, '0');
+      var yy = String(d.getFullYear()).slice(-2);
+      var h = d.getHours();
+      var ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      var m = String(d.getMinutes()).padStart(2, '0');
+      return mm + '-' + dd + '-' + yy + ' ' + h + ':' + m + ' ' + ampm;
+    }
+
+    var logState = {
+      runs: [],
+      selectedRunId: null,
+      tab: 'all',
+      search: '',
+      isOpen: false,
+      theme: 'dark',
+      shortcuts: {}
+    };
+
+    var modalState = {
+      resolver: null,
+      externalPending: false
+    };
+
+    function askConfirm(opts){
+      return new Promise(function(resolve){
+        modalState.resolver = resolve;
+        modalState.externalPending = !!opts.external;
+        var bd = document.getElementById('nagaModal');
+        var tile = document.getElementById('nagaModalTile');
+        var titleEl = document.getElementById('nagaModalTitle');
+        var subEl = document.getElementById('nagaModalSub');
+        var factsEl = document.getElementById('nagaModalFacts');
+        var yesBtn = document.getElementById('nagaModalYes');
+        var noBtn = document.getElementById('nagaModalNo');
+
+        tile.textContent = opts.tile || '⚠️';
+        tile.className = 'naga-modal-tile ' + (opts.kind || 'warn');
+        titleEl.textContent = opts.title || 'Confirm';
+        subEl.textContent = opts.subtitle || '';
+        yesBtn.textContent = (opts.yesLabel || 'Yes') + ' (Y / ↩)';
+        noBtn.textContent = (opts.noLabel || 'No') + ' (N / Esc)';
+        factsEl.innerHTML = (opts.facts || []).map(function(row){
+          return '<tr><td>' + esc(row[0]) + '</td><td>' + esc(row[1]) + '</td></tr>';
+        }).join('');
+        bd.classList.add('open');
+      });
+    }
+
+    function resolveConfirm(answer){
+      var bd = document.getElementById('nagaModal');
+      if (!bd.classList.contains('open')) return;
+      bd.classList.remove('open');
+      var wasExt = modalState.externalPending;
+      var fn = modalState.resolver;
+      modalState.resolver = null;
+      modalState.externalPending = false;
+      if (wasExt) {
+        postHost('confirmResponse:' + (answer ? 'true' : 'false'));
+      }
+      if (fn) fn(!!answer);
+    }
+
+    document.getElementById('nagaModalYes').addEventListener('click', function(){ resolveConfirm(true); });
+    document.getElementById('nagaModalNo').addEventListener('click', function(){ resolveConfirm(false); });
+
+    function selectedRun(){
+      if (!logState.runs.length) return null;
+      var found = logState.runs.find(function(r){ return r.id === logState.selectedRunId; });
+      if (!found) {
+        found = logState.runs[0];
+        logState.selectedRunId = found.id;
+      }
+      return found;
+    }
+
+    function renderLogView(){
+      var runsList = document.getElementById('logRunsList');
+      var totalRunsEl = document.getElementById('logTotalRuns');
+      var clearAllBtn = document.getElementById('clearAllLogBtn');
+      totalRunsEl.textContent = logState.runs.length ? ('(' + logState.runs.length + ')') : '';
+      clearAllBtn.style.display = logState.runs.length ? '' : 'none';
+
+      if (!logState.runs.length) {
+        runsList.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:.88rem;">No scrapes recorded yet. Run This Week or Last Week to record history in-app.</div>';
+        document.getElementById('logRunTitle').textContent = 'Scrape & Missed Log';
+        document.getElementById('logRunMeta').textContent = 'Stored locally — zero CSV files created.';
+        document.getElementById('logOpenSpotifyBtn').style.display = 'none';
+        document.getElementById('deleteRunBtn').style.display = 'none';
+        document.getElementById('logStatsBar').innerHTML = '';
+        document.getElementById('logTracksList').innerHTML = '<div style="padding:28px;color:var(--muted);text-align:center;">No saved runs to inspect.</div>';
+        return;
+      }
+
+      var cur = selectedRun();
+      runsList.innerHTML = logState.runs.map(function(run){
+        var stats = run.stats || {};
+        var scrapedCount = (run.scraped ? run.scraped.length : (stats.unique || 0));
+        var missedCount = (run.missed ? run.missed.length : (stats.omitted || 0));
+        var badges = [];
+        if (scrapedCount > 0) badges.push('<span class="r-pill ok">' + scrapedCount + ' scraped</span>');
+        if (missedCount > 0) badges.push('<span class="r-pill miss">' + missedCount + ' missed</span>');
+        if (run.ok === false) badges.push('<span class="r-pill fail">failed</span>');
+        var isLastWeek = run.mode === 'last-week';
+        return '<button type="button" class="run-card ' + (cur && cur.id === run.id ? 'selected' : '') + '" data-run-id="' + esc(run.id) + '">' +
+          '<div class="run-card-top">' +
+            '<span class="run-mode ' + (isLastWeek ? 'lastweek' : '') + '">' + esc(isLastWeek ? 'Last Week' : 'This Week') + '</span>' +
+            '<span class="run-time" data-ts="' + esc(run.timestamp) + '" title="' + esc(formatFullDate(run.timestamp)) + '">' + esc(ago(run.timestamp)) + '</span>' +
+          '</div>' +
+          '<div class="run-title">' + esc(run.playlistName || run.message || 'Scrape Run') + '</div>' +
+          (badges.length ? '<div class="run-badges">' + badges.join('') + '</div>' : '') +
+        '</button>';
+      }).join('');
+
+      runsList.querySelectorAll('[data-run-id]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          logState.selectedRunId = btn.dataset.runId;
+          renderLogView();
+        });
+      });
+
+      // Right inspector
+      document.getElementById('logRunTitle').textContent = cur.playlistName || cur.message || 'Scrape Run';
+      document.getElementById('logRunMeta').innerHTML =
+        '<span data-ts="' + esc(cur.timestamp) + '" title="' + esc(formatFullDate(cur.timestamp)) + '">' + esc(ago(cur.timestamp)) + '</span>' +
+        ' · ' + esc(formatFullDate(cur.timestamp)) +
+        (cur.message ? ' · ' + esc(cur.message) : '');
+
+      var spBtn = document.getElementById('logOpenSpotifyBtn');
+      if (cur.spotifyUri) {
+        spBtn.style.display = '';
+        spBtn.onclick = function(){ try{ window.location.href = cur.spotifyUri; }catch(e){} };
+      } else {
+        spBtn.style.display = 'none';
+      }
+
+      var delBtn = document.getElementById('deleteRunBtn');
+      delBtn.style.display = '';
+      delBtn.onclick = async function(){
+        var ok = await askConfirm({
+          title: 'Delete This Log Run?',
+          subtitle: 'Removes this run from the in-app Scrape & Missed Log.',
+          tile: '🗑️',
+          kind: 'danger',
+          facts: [
+            ['Playlist', cur.playlistName || '—'],
+            ['Recorded', formatFullDate(cur.timestamp)],
+            ['Tracks', String((cur.scraped || []).length) + ' scraped, ' + String((cur.missed || []).length) + ' missed'],
+            ['Spotify Playlist', 'Not deleted from Spotify.']
+          ]
+        });
+        if (ok) {
+          postHost('deleteRun:' + cur.id);
+          logState.runs = logState.runs.filter(function(r){ return r.id !== cur.id; });
+          logState.selectedRunId = logState.runs.length ? logState.runs[0].id : null;
+          renderLogView();
+          showToast('Run deleted');
+        }
+      };
+
+      // Non-zero stats bar
+      var st = cur.stats || {};
+      var missedArr = cur.missed || [];
+      var scrapedArr = cur.scraped || [];
+      var matchedCount = Math.max(0, scrapedArr.length - missedArr.length);
+      var statItems = [
+        ['ok', scrapedArr.length, 'Scraped'],
+        ['', matchedCount, 'Matched'],
+        ['miss', missedArr.length, 'Missed'],
+        ['', st.recent || 0, 'Recent Filter'],
+        ['', st.duplicates || 0, 'Deduped']
+      ].filter(function(x){ return x[1] > 0; });
+
+      document.getElementById('logStatsBar').innerHTML = statItems.map(function(x){
+        return '<div class="lstat ' + x[0] + '"><span class="v">' + x[1] + '</span><span class="l">' + x[2] + '</span></div>';
+      }).join('');
+
+      document.querySelectorAll('[data-log-tab]').forEach(function(btn){
+        btn.classList.toggle('active', btn.dataset.logTab === logState.tab);
+      });
+
+      var rows = [];
+      var missedSet = new Set();
+      missedArr.forEach(function(t){
+        var k = (t.title || '') + '||' + (t.artist || '');
+        missedSet.add(k);
+        if (logState.tab === 'all' || logState.tab === 'missed') {
+          rows.push({ track: t, status: 'missed' });
+        }
+      });
+      if (logState.tab === 'all' || logState.tab === 'scraped') {
+        scrapedArr.forEach(function(t, idx){
+          var k = (t.title || '') + '||' + (t.artist || '');
+          if (logState.tab === 'all' && missedSet.has(k)) return;
+          rows.push({ track: t, status: missedSet.has(k) ? 'missed' : 'scraped', idx: idx + 1 });
+        });
+      }
+
+      var q = logState.search.trim().toLowerCase();
+      if (q) {
+        rows = rows.filter(function(item){
+          var t = item.track || {};
+          return [t.title, t.artist, t.album, t.source, t.dateAdded].join(' ').toLowerCase().includes(q);
+        });
+      }
+
+      var listEl = document.getElementById('logTracksList');
+      if (!rows.length) {
+        listEl.innerHTML = '<div style="padding:26px;color:var(--muted);text-align:center;">No tracks match this filter.</div>';
+        return;
+      }
+
+      listEl.innerHTML = rows.map(function(item){
+        var t = item.track || {};
+        var isMiss = item.status === 'missed';
+        var copyStr = ((t.title || '') + ' ' + (t.artist || '')).trim();
+        var artHTML = t.art
+          ? '<img src="' + esc(sized(t.art, 160)) + '" alt="" loading="lazy" onerror="this.remove()" />'
+          : '<svg viewBox="0 0 48 48" aria-hidden="true"><use href="#vinyl"/></svg>';
+        return '<div class="log-track-row ' + (isMiss ? 'is-missed' : '') + '">' +
+          '<div class="thumb">' + artHTML + '</div>' +
+          '<div class="log-track-body">' +
+            '<div class="log-track-title">' + esc(t.title || 'Unknown title') + '</div>' +
+            '<div class="log-track-meta">' + esc(t.artist || 'Unknown artist') + (t.album ? ' · ' + esc(t.album) : '') + '</div>' +
+            '<div class="log-track-tags">' +
+              '<span class="log-tag ' + (isMiss ? 'miss' : 'scraped') + '">' + (isMiss ? 'Missed on Spotify' : 'Matched on Spotify') + '</span>' +
+              (t.source ? '<span class="log-tag src">' + esc(t.source) + '</span>' : '') +
+              (t.dateAdded ? '<span class="log-tag">' + esc(t.dateAdded) + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<button type="button" class="btn-mini" data-copy-track="' + esc(copyStr) + '">Copy</button>' +
+        '</div>';
+      }).join('');
+
+      listEl.querySelectorAll('[data-copy-track]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var s = btn.dataset.copyTrack;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(s).catch(function(){});
+          }
+          postHost('copyText:' + s);
+          showToast('Copied "' + s + '"');
+        });
+      });
+    }
+
+    function setLogOpen(open, tab){
+      logState.isOpen = !!open;
+      if (tab && (tab === 'all' || tab === 'missed' || tab === 'scraped')) {
+        logState.tab = tab;
+      }
+      document.body.classList.toggle('log-open', logState.isOpen);
+      document.getElementById('logNavBtn').classList.toggle('active', logState.isOpen);
+      if (logState.isOpen) {
+        renderLogView();
+      }
+    }
+
+    function applyTheme(mode){
+      var m = (mode === 'light') ? 'light' : 'dark';
+      logState.theme = m;
+      document.documentElement.setAttribute('data-theme', m);
+      var btn = document.getElementById('appearanceBtn');
+      var kbd = (logState.shortcuts && logState.shortcuts.toggleAppearance) || '⌘⇧L';
+      if (m === 'dark') {
+        btn.textContent = '☀️';
+        btn.title = 'Switch to Light Appearance (' + kbd + ')';
+      } else {
+        btn.textContent = '🌙';
+        btn.title = 'Switch to Dark Appearance (' + kbd + ')';
+      }
+    }
+
+    function updateOcclusionPause(){
+      var occluded = document.hidden || document.documentElement.getAttribute('data-occluded') === '1';
+      document.documentElement.classList.toggle('animations-paused', occluded);
+      if (els.heroVideo) {
+        if (occluded) {
+          try{ els.heroVideo.pause(); }catch(e){}
+        } else if (!els.heroVideo.hidden) {
+          els.heroVideo.play().catch(function(){});
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', updateOcclusionPause);
+
+    document.getElementById('logNavBtn').addEventListener('click', function(){
+      setLogOpen(!logState.isOpen);
+    });
+    document.getElementById('backToHudBtn').addEventListener('click', function(){
+      setLogOpen(false);
+    });
+    document.getElementById('appearanceBtn').addEventListener('click', function(){
+      postHost('toggleAppearance');
+    });
+    document.getElementById('settingsNavBtn').addEventListener('click', function(){
+      postHost('openSettings');
+    });
+
+    document.querySelectorAll('[data-log-tab]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        logState.tab = btn.dataset.logTab;
+        renderLogView();
+      });
+    });
+
+    var logSearchInput = document.getElementById('logSearchInput');
+    var logSearchClear = document.getElementById('logSearchClear');
+    logSearchInput.addEventListener('input', function(){
+      logState.search = logSearchInput.value;
+      logSearchClear.classList.toggle('visible', !!logSearchInput.value);
+      renderLogView();
+    });
+    logSearchClear.addEventListener('click', function(){
+      logState.search = '';
+      logSearchInput.value = '';
+      logSearchClear.classList.remove('visible');
+      renderLogView();
+      logSearchInput.focus();
+    });
+
+    document.getElementById('clearAllLogBtn').addEventListener('click', async function(){
+      var ok = await askConfirm({
+        title: 'Clear All Scrape & Missed Log History?',
+        subtitle: 'This permanently deletes every saved run from the in-app log.',
+        tile: '🗑️',
+        kind: 'danger',
+        facts: [
+          ['Runs to delete', String(logState.runs.length)],
+          ['Spotify Playlists', 'Not deleted from Spotify.']
+        ]
+      });
+      if (ok) {
+        postHost('clearHistory');
+        logState.runs = [];
+        logState.selectedRunId = null;
+        renderLogView();
+        showToast('Log history cleared');
+      }
+    });
+
+    window.addEventListener('keydown', function(e){
+      if (document.getElementById('nagaModal').classList.contains('open')) {
+        e.preventDefault();
+        var k = e.key.toLowerCase();
+        if (k === 'y' || e.key === 'Enter') resolveConfirm(true);
+        else if (k === 'n' || e.key === 'Escape') resolveConfirm(false);
+        return;
+      }
+      if (e.key === 'Escape' && logState.isOpen) {
+        if (logState.search) {
+          logState.search = '';
+          logSearchInput.value = '';
+          logSearchClear.classList.remove('visible');
+          renderLogView();
+        } else {
+          setLogOpen(false);
+        }
+      }
+    });
+
+    // Refresh relative timestamps every 30s
+    setInterval(function(){
+      document.querySelectorAll('[data-ts]').forEach(function(el){
+        el.textContent = ago(el.getAttribute('data-ts'));
+      });
+    }, 30000);
+
+    window.NMRApp = {
+      render: render,
+      setTheme: applyTheme,
+      setOccluded: function(val){
+        document.documentElement.setAttribute('data-occluded', val ? '1' : '0');
+        updateOcclusionPause();
+      },
+      setShortcuts: function(map){
+        logState.shortcuts = map || {};
+        var logKbd = map && map.openLog ? map.openLog : '⌘L';
+        var setKbd = map && map.openSettings ? map.openSettings : '⌘,';
+        document.getElementById('logShortcutHint').textContent = logKbd;
+        document.getElementById('logNavBtn').title = 'Toggle Scrape & Missed Log (' + logKbd + ')';
+        document.getElementById('settingsNavBtn').title = 'Settings (' + setKbd + ')';
+        applyTheme(logState.theme);
+      },
+      setHistory: function(runs){
+        logState.runs = Array.isArray(runs) ? runs : [];
+        if (logState.isOpen) renderLogView();
+      },
+      openLog: function(tab){ setLogOpen(true, tab); },
+      toggleLog: function(tab){
+        if (logState.isOpen && (!tab || logState.tab === tab)) {
+          setLogOpen(false);
+        } else {
+          setLogOpen(true, tab);
+        }
+      },
+      openHUD: function(){ setLogOpen(false); },
+      askConfirm: function(payload){ return askConfirm(Object.assign({}, payload, { external: true })); },
+      getState: function(){
+        return {
+          theme: logState.theme,
+          logOpen: logState.isOpen,
+          logTab: logState.tab,
+          runCount: logState.runs.length,
+          selectedRunId: logState.selectedRunId,
+          modalOpen: document.getElementById('nagaModal').classList.contains('open')
+        };
+      }
+    };
+
+    postHost('ready');
   })();
 </script>
 </body>
