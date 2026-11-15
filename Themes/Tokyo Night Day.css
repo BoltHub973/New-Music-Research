@@ -1,0 +1,67 @@
+/* naga-theme: tokyonight-day */
+/* New Music Research theme: Tokyo Night Day
+   naga-mode: light
+   naga-accent: #1359b7
+   naga-pair: tokyonight-night
+   Imported 11-14-26 from Notion NAGA/Tokyo Night Day.css. */
+
+:root {
+  --void: #c1c9df;
+  --abyss: #e1e2e7;
+  --bg: #e1e2e7;
+  --surface: #d0d5e3;
+  --elevated: #c4c8da;
+  --surface-2: #c4c8da;
+  --raised: #b7c1e3;
+  --surface-3: #b7c1e3;
+  --track: #a8aecb;
+  --border: rgba(50, 88, 175, 0.13);
+  --border-soft: rgba(50, 88, 175, 0.08);
+  --border-strong: rgba(50, 88, 175, 0.22);
+  --text: #3258af;
+  --text-2: #495992;
+  --muted: #545b7e;
+  --ghost: #515a87;
+  --cyan: #1359b7;
+  --accent: #1359b7;
+  --accent-fg: #ffffff;
+  --cyan-glow: rgba(19, 89, 183, 0.12);
+  --accent-dim: rgba(19, 89, 183, 0.12);
+  --accent-border: rgba(19, 89, 183, 0.38);
+  --violet: #761bec;
+  --violet-glow: rgba(118, 27, 236, 0.14);
+  --magenta: #761bec;
+  --ok: #4b6431;
+  --green: #4b6431;
+  --green-dim: rgba(75, 100, 49, 0.14);
+  --warn: #715832;
+  --amber: #715832;
+  --amber-dim: rgba(113, 88, 50, 0.15);
+  --err: #b8093c;
+  --danger: #b8093c;
+  --danger-dim: rgba(184, 9, 60, 0.15);
+  --panel-bg: rgba(208, 213, 227, 0.88);
+  --phase-bg: rgba(196, 200, 218, 0.88);
+  --scrim-bg: radial-gradient(ellipse at 50% 42%, rgba(225, 226, 231, 0.72) 0%, rgba(225, 226, 231, 0.92) 74%), linear-gradient(180deg, rgba(225, 226, 231, 0.82) 0%, rgba(225, 226, 231, 0.9) 50%, rgba(225, 226, 231, 0.95) 100%);
+  --mesh-bg: radial-gradient(ellipse at 18% 12%, rgba(19, 89, 183, 0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 20%, rgba(118, 27, 236, 0.14) 0%, transparent 55%), radial-gradient(ellipse at 60% 100%, rgba(118, 27, 236, 0.08) 0%, transparent 55%), var(--abyss);
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+}
+
+html .bg.mesh {
+  background: var(--mesh-bg) !important;
+}
+html .bg.grid {
+  background-image:
+    linear-gradient(rgba(50, 88, 175, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(50, 88, 175, 0.08) 1px, transparent 1px) !important;
+}
+html .wtile img {
+  filter: saturate(.82) brightness(.95);
+  opacity: .30;
+}
+html button.primary,
+html .btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}

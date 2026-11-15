@@ -46,6 +46,11 @@ final class WebViewController: NSViewController {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        ucc.addUserScript(WKUserScript(
+            source: ThemeManager.shared.activeInjectionScript(),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
 
         webView = WKWebView(frame: .zero, configuration: config)
         if #available(macOS 13.3, *) {
@@ -61,6 +66,12 @@ final class WebViewController: NSViewController {
             self,
             selector: #selector(handleSharedStoreChanged),
             name: SharedStore.changedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleThemesChanged),
+            name: ThemeManager.themesChangedNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(
@@ -100,10 +111,12 @@ final class WebViewController: NSViewController {
     }
 
     func applyAppearance() {
-        let app = SharedStore.shared.appearance
-        view.window?.appearance = NSAppearance(named: app == .light ? .aqua : .darkAqua)
+        let mode = ThemeManager.shared.currentSide
+        view.window?.appearance = NSAppearance(named: mode == .light ? .aqua : .darkAqua)
+        view.window?.backgroundColor = ThemeManager.shared.activePalette().bgColor
         guard isReady else { return }
-        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setTheme('\(app.rawValue)');", completionHandler: nil)
+        webView.evaluateJavaScript("window.NMRApp && window.NMRApp.setTheme('\(mode.rawValue)');", completionHandler: nil)
+        ThemeManager.shared.applyLiveTheme(to: webView)
     }
 
     func applyStoredZoom() {
@@ -226,6 +239,10 @@ final class WebViewController: NSViewController {
         applyAppearance()
         applyStoredZoom()
         pushShortcuts()
+    }
+
+    @objc private func handleThemesChanged() {
+        applyAppearance()
     }
 
     @objc private func handleHistoryChanged() {

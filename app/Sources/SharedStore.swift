@@ -7,6 +7,12 @@ enum AppAppearance: String {
     var toggled: AppAppearance { self == .dark ? .light : .dark }
 }
 
+enum ThemeNameDisplay: String {
+    case custom
+    case official
+    case both
+}
+
 /// Shared user-owned state stored in ~/Library/Application Support/New Music Research/settings.json
 /// so every checkout/worktree reads and writes the same preferences, synced live via a folder watcher.
 final class SharedStore {
@@ -23,8 +29,14 @@ final class SharedStore {
     private(set) var appearance: AppAppearance = .dark
     private(set) var pageZoom: Double = 1.0
     private(set) var shortcuts: [String: [String]] = [:]
-    private(set) var settingsSectionOrder: [String] = ["general", "appearance", "shortcuts", "urls"]
+    private(set) var settingsSectionOrder: [String] = ["general", "appearance", "playlists", "shortcuts", "urls"]
     private(set) var secondaryWindowFrame: String?
+    private(set) var themesRootPath: String?
+    private(set) var activeThemeID: String?
+    private(set) var preferredDarkThemeID: String = "dracula"
+    private(set) var preferredLightThemeID: String = "gruvbox-light"
+    private(set) var listedAppearance: String?
+    private(set) var themeNameDisplay: ThemeNameDisplay = .custom
 
     private var watcher: DispatchSourceFileSystemObject?
     private var lastLoadedData: Data?
@@ -87,6 +99,56 @@ final class SharedStore {
         saveToDisk()
     }
 
+    func setThemesRootPath(_ path: String?) {
+        let cleaned = path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (cleaned?.isEmpty == false) ? cleaned : nil
+        guard themesRootPath != normalized else { return }
+        themesRootPath = normalized
+        saveToDisk()
+        notifyChanged()
+    }
+
+    func updateThemePreferences(
+        activeThemeID: String? = nil,
+        preferredDarkThemeID: String? = nil,
+        preferredLightThemeID: String? = nil,
+        listedAppearance: String? = nil,
+        appearance: AppAppearance? = nil,
+        notify: Bool = true
+    ) {
+        var changed = false
+        if let activeThemeID, self.activeThemeID != activeThemeID {
+            self.activeThemeID = activeThemeID
+            changed = true
+        }
+        if let preferredDarkThemeID, self.preferredDarkThemeID != preferredDarkThemeID {
+            self.preferredDarkThemeID = preferredDarkThemeID
+            changed = true
+        }
+        if let preferredLightThemeID, self.preferredLightThemeID != preferredLightThemeID {
+            self.preferredLightThemeID = preferredLightThemeID
+            changed = true
+        }
+        if let listedAppearance, self.listedAppearance != listedAppearance {
+            self.listedAppearance = listedAppearance
+            changed = true
+        }
+        if let appearance, self.appearance != appearance {
+            self.appearance = appearance
+            changed = true
+        }
+        guard changed else { return }
+        saveToDisk()
+        if notify { notifyChanged() }
+    }
+
+    func setThemeNameDisplay(_ mode: ThemeNameDisplay) {
+        guard themeNameDisplay != mode else { return }
+        themeNameDisplay = mode
+        saveToDisk()
+        notifyChanged()
+    }
+
     private func notifyChanged() {
         if Thread.isMainThread {
             NotificationCenter.default.post(name: Self.changedNotification, object: self)
@@ -126,7 +188,7 @@ final class SharedStore {
             shortcuts = [:]
         }
 
-        let defaultOrder = ["general", "appearance", "shortcuts", "urls"]
+        let defaultOrder = ["general", "appearance", "playlists", "shortcuts", "urls"]
         if let order = obj["settingsSectionOrder"] as? [String], !order.isEmpty {
             var healed = order.filter { defaultOrder.contains($0) }
             for item in defaultOrder where !healed.contains(item) {
@@ -138,6 +200,25 @@ final class SharedStore {
         }
 
         secondaryWindowFrame = obj["secondaryWindowFrame"] as? String
+        themesRootPath = obj["themesRootPath"] as? String
+        activeThemeID = obj["activeThemeID"] as? String
+        if let prefDark = obj["preferredDarkThemeID"] as? String, !prefDark.isEmpty {
+            preferredDarkThemeID = prefDark
+        } else {
+            preferredDarkThemeID = "dracula"
+        }
+        if let prefLight = obj["preferredLightThemeID"] as? String, !prefLight.isEmpty {
+            preferredLightThemeID = prefLight
+        } else {
+            preferredLightThemeID = "gruvbox-light"
+        }
+        listedAppearance = obj["listedAppearance"] as? String
+        if let rawDisplay = obj["themeNameDisplay"] as? String,
+           let parsedDisplay = ThemeNameDisplay(rawValue: rawDisplay) {
+            themeNameDisplay = parsedDisplay
+        } else {
+            themeNameDisplay = .custom
+        }
 
         if notify { notifyChanged() }
     }
@@ -149,9 +230,21 @@ final class SharedStore {
             "pageZoom": pageZoom,
             "shortcuts": shortcuts,
             "settingsSectionOrder": settingsSectionOrder,
+            "preferredDarkThemeID": preferredDarkThemeID,
+            "preferredLightThemeID": preferredLightThemeID,
+            "themeNameDisplay": themeNameDisplay.rawValue,
         ]
         if let frame = secondaryWindowFrame {
             obj["secondaryWindowFrame"] = frame
+        }
+        if let themesRootPath {
+            obj["themesRootPath"] = themesRootPath
+        }
+        if let activeThemeID {
+            obj["activeThemeID"] = activeThemeID
+        }
+        if let listedAppearance {
+            obj["listedAppearance"] = listedAppearance
         }
         guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]) else {
             return

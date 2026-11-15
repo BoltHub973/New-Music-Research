@@ -28,14 +28,26 @@ enum URLRoutes {
         URLRouteDef(
             route: "settings",
             summary: "Open, focus a section, or close the Settings window",
-            example: "nmr://settings?section=shortcuts",
-            params: "section=general|appearance|shortcuts|urls, close=1, background=1"
+            example: "nmr://settings?section=playlists",
+            params: "section=general|appearance|playlists|shortcuts|urls, close=1, background=1"
         ),
         URLRouteDef(
             route: "appearance",
             summary: "Switch or toggle Dark / Light Appearance across all windows",
             example: "nmr://appearance?mode=toggle",
             params: "mode=dark|light|toggle"
+        ),
+        URLRouteDef(
+            route: "theme",
+            summary: "Select an installed NAGA theme by name or slug",
+            example: "nmr://theme?name=Alucard",
+            params: "name=<theme name or id>"
+        ),
+        URLRouteDef(
+            route: "preset",
+            summary: "Activate a Playlist Order preset by name or id",
+            example: "nmr://preset?name=Default",
+            params: "name=<preset name or id>"
         ),
         URLRouteDef(
             route: "worktree-menu",

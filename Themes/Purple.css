@@ -1,0 +1,67 @@
+/* naga-theme: catppuccin-latte */
+/* New Music Research theme: Purple
+   naga-mode: light
+   naga-accent: #8839ef
+   naga-pair: catppuccin-mocha
+   Imported 11-14-26 from Notion NAGA/Purple.css. */
+
+:root {
+  --void: #dce0e8;
+  --abyss: #eff1f5;
+  --bg: #eff1f5;
+  --surface: #e6e9ef;
+  --elevated: #ccd0da;
+  --surface-2: #ccd0da;
+  --raised: #bcc0cc;
+  --surface-3: #bcc0cc;
+  --track: #acb0be;
+  --border: rgba(76, 79, 105, 0.13);
+  --border-soft: rgba(76, 79, 105, 0.08);
+  --border-strong: rgba(76, 79, 105, 0.22);
+  --text: #4c4f69;
+  --text-2: #5c5f77;
+  --muted: #6c6f85;
+  --ghost: #8c8fa1;
+  --cyan: #8839ef;
+  --accent: #8839ef;
+  --accent-fg: #ffffff;
+  --cyan-glow: rgba(136, 57, 239, 0.12);
+  --accent-dim: rgba(136, 57, 239, 0.12);
+  --accent-border: rgba(136, 57, 239, 0.38);
+  --violet: #1e66f5;
+  --violet-glow: rgba(30, 102, 245, 0.14);
+  --magenta: #12747a;
+  --ok: #307820;
+  --green: #307820;
+  --green-dim: rgba(48, 120, 32, 0.14);
+  --warn: #925d13;
+  --amber: #925d13;
+  --amber-dim: rgba(146, 93, 19, 0.15);
+  --err: #d20f39;
+  --danger: #d20f39;
+  --danger-dim: rgba(210, 15, 57, 0.15);
+  --panel-bg: rgba(230, 233, 239, 0.88);
+  --phase-bg: rgba(204, 208, 218, 0.88);
+  --scrim-bg: radial-gradient(ellipse at 50% 42%, rgba(239, 241, 245, 0.72) 0%, rgba(239, 241, 245, 0.92) 74%), linear-gradient(180deg, rgba(239, 241, 245, 0.82) 0%, rgba(239, 241, 245, 0.9) 50%, rgba(239, 241, 245, 0.95) 100%);
+  --mesh-bg: radial-gradient(ellipse at 18% 12%, rgba(136, 57, 239, 0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 20%, rgba(30, 102, 245, 0.14) 0%, transparent 55%), radial-gradient(ellipse at 60% 100%, rgba(18, 116, 122, 0.08) 0%, transparent 55%), var(--abyss);
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+}
+
+html .bg.mesh {
+  background: var(--mesh-bg) !important;
+}
+html .bg.grid {
+  background-image:
+    linear-gradient(rgba(76, 79, 105, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 79, 105, 0.08) 1px, transparent 1px) !important;
+}
+html .wtile img {
+  filter: saturate(.82) brightness(.95);
+  opacity: .30;
+}
+html button.primary,
+html .btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}

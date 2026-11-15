@@ -91,16 +91,76 @@ def open_spotify_playlist(uri):
         ui.warn(f"Could not open Spotify automatically: {e}")
 
 
-def load_playlists(filename="playlists.json"):
+def default_presets_file():
+    return os.getenv("NMR_PRESETS_FILE") or str(
+        Path.home() / "Library/Application Support/New Music Research/playlist-presets.json"
+    )
+
+
+def _load_canonical_playlists(filename="playlists.json"):
     if not os.path.exists(filename):
         ui.err(f"{filename} not found.")
         return []
     with open(filename, 'r') as f:
         try:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, list) else []
         except json.JSONDecodeError as e:
             ui.err(f"Error decoding JSON: {e}")
             return []
+
+
+def reconcile_playlist_order(canonical_playlists, ordered_urls):
+    """Order canonical playlists according to ordered_urls, appending any new entries at the end."""
+    by_url = {item.get("url"): item for item in canonical_playlists if item.get("url")}
+    ordered = []
+    seen = set()
+    for url in (ordered_urls or []):
+        if url in by_url and url not in seen:
+            ordered.append(by_url[url])
+            seen.add(url)
+    for item in canonical_playlists:
+        url = item.get("url")
+        if url and url not in seen:
+            ordered.append(item)
+            seen.add(url)
+    return ordered
+
+
+def _resolve_active_preset(presets_file=None):
+    path = presets_file or default_presets_file()
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    active_id = data.get("activePresetId", "default")
+    if not active_id or active_id == "default":
+        return None
+    for preset in data.get("presets", []):
+        if isinstance(preset, dict) and preset.get("id") == active_id:
+            return preset
+    return None
+
+
+def active_preset_name(presets_file=None):
+    preset = _resolve_active_preset(presets_file=presets_file)
+    return preset.get("name", "Default") if preset else "Default"
+
+
+def load_playlists(filename="playlists.json", presets_file=None):
+    canonical = _load_canonical_playlists(filename)
+    if not canonical:
+        return []
+    preset = _resolve_active_preset(presets_file=presets_file)
+    if not preset:
+        return canonical
+    ordered_urls = preset.get("order") or []
+    return reconcile_playlist_order(canonical, ordered_urls)
 
 def _login_print(msg):
     """Surface Tidal login-flow messages (the approval link) in both UIs."""
@@ -264,6 +324,8 @@ def main():
         km.no_macros_fired("the run aborted")
         km.finish(ok=False, message="playlists.json not found or empty")
         return
+
+    km.log(f"Playlist preset: {active_preset_name()} ({len(playlists)} playlists)")
 
     all_tracks = []
     playlist_created = False   # gates the end-of-run KM macro

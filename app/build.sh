@@ -19,8 +19,20 @@ if [ "${1:-}" = "--relaunch" ]; then
     RELAUNCH=1
 fi
 
-# 0. Verify Python pipeline ordering & audit guards before building.
+# 0. Verify Python pipeline ordering & audit guards, sync ThemesMenu master, and run ThemeRulesGuard before building.
 /usr/bin/python3 -m unittest discover -s "${REPO_ROOT}/tests" -v
+
+THEMES_SYNC="$HOME/Development/Themes/_Themes Menu MASTER/sync.sh"
+if [ -x "${THEMES_SYNC}" ]; then
+    (cd "${SOURCE_DIR}" && "${THEMES_SYNC}" "Sources/ThemesMenu.swift" "Sources")
+fi
+
+if [ -f "${REPO_ROOT}/tests/ThemeRulesGuard/main.swift" ]; then
+    GUARD_BIN="$(mktemp -t nmr_theme_guard)"
+    swiftc "${REPO_ROOT}/tests/ThemeRulesGuard/main.swift" "${SOURCE_DIR}/Sources/ThemeMarkers.swift" -o "${GUARD_BIN}"
+    "${GUARD_BIN}" "${REPO_ROOT}"
+    rm -f "${GUARD_BIN}"
+fi
 
 # 1. Compile BEFORE touching /Applications so a failed build leaves the existing app intact.
 cd "${SOURCE_DIR}"
@@ -71,9 +83,15 @@ fi
 /usr/libexec/PlistBuddy -c "Delete :NMRProjectRoot" "${PLIST_DST}" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NMRProjectRoot string ${REPO_ROOT}" "${PLIST_DST}"
 
-# 4. Bundle the HUD + Settings UI.
+# 4. Bundle the HUD + Settings UI + BundledThemes.
 cp "${REPO_ROOT}/keyboard-maestro/progress_window.html" "${APP_PATH}/Contents/Resources/progress_window.html"
 cp "Resources/settings.html" "${APP_PATH}/Contents/Resources/settings.html"
+
+BUNDLED_THEMES_DST="${APP_PATH}/Contents/Resources/BundledThemes"
+mkdir -p "${BUNDLED_THEMES_DST}"
+if [ -d "${REPO_ROOT}/Themes" ]; then
+    cp "${REPO_ROOT}/Themes/"*.css "${BUNDLED_THEMES_DST}/"
+fi
 
 # 4b. Bundle the Python pipeline — the app runs this copy, so the installed app is
 # always self-consistent no matter what any checkout currently contains. Only code

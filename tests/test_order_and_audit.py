@@ -3,6 +3,7 @@ import datetime
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -255,6 +256,61 @@ class SpotifyAuditAndRepairTests(unittest.TestCase):
                 export_to_spotify.main()
         self.assertEqual(ctx.exception.code, 1)
         self.assertNotIn("SPOTIFY_URI:", out_bad.getvalue())
+
+
+class PlaylistPresetOrderTests(unittest.TestCase):
+    def test_default_order_and_custom_preset_reconciliation(self):
+        canonical = [
+            {"name": "Alpha", "url": "https://tidal.com/playlist/alpha"},
+            {"name": "Beta", "url": "https://tidal.com/playlist/beta"},
+            {"name": "Gamma", "url": "https://tidal.com/playlist/gamma"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            pl_path = Path(tmp) / "playlists.json"
+            pr_path = Path(tmp) / "playlist-presets.json"
+            pl_path.write_text(json.dumps(canonical), encoding="utf-8")
+
+            # 1) Missing presets file -> canonical Default order
+            self.assertEqual(
+                [p["name"] for p in track_playlists.load_playlists(str(pl_path), presets_file=str(pr_path))],
+                ["Alpha", "Beta", "Gamma"],
+            )
+            self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Default")
+
+            # 2) Active custom preset reorders and reconciles removed + newly added playlists
+            pr_path.write_text(
+                json.dumps(
+                    {
+                        "activePresetId": "custom-1",
+                        "presets": [
+                            {
+                                "id": "custom-1",
+                                "name": "Club First",
+                                "order": [
+                                    "https://tidal.com/playlist/removed-old",
+                                    "https://tidal.com/playlist/gamma",
+                                    "https://tidal.com/playlist/alpha",
+                                    "https://tidal.com/playlist/gamma",
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            loaded = track_playlists.load_playlists(str(pl_path), presets_file=str(pr_path))
+            self.assertEqual([p["name"] for p in loaded], ["Gamma", "Alpha", "Beta"])
+            self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Club First")
+
+            # 3) Switching activePresetId back to default restores canonical order
+            pr_data = json.loads(pr_path.read_text(encoding="utf-8"))
+            pr_data["activePresetId"] = "default"
+            pr_path.write_text(json.dumps(pr_data), encoding="utf-8")
+            self.assertEqual(
+                [p["name"] for p in track_playlists.load_playlists(str(pl_path), presets_file=str(pr_path))],
+                ["Alpha", "Beta", "Gamma"],
+            )
+            self.assertEqual(track_playlists.active_preset_name(presets_file=str(pr_path)), "Default")
 
 
 if __name__ == "__main__":

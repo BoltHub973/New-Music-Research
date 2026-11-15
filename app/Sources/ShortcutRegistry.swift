@@ -32,6 +32,7 @@ final class ShortcutRegistry {
         ShortcutAction(id: "zoomReset", title: "Actual Size", section: "View", defaultCombos: ["cmd+0"], safeForExternalURL: true),
         ShortcutAction(id: "settingsSectionGeneral", title: "Settings › General", section: "Settings Sections", defaultCombos: ["ctrl+g"], safeForExternalURL: true),
         ShortcutAction(id: "settingsSectionAppearance", title: "Settings › Appearance", section: "Settings Sections", defaultCombos: ["ctrl+a"], safeForExternalURL: true),
+        ShortcutAction(id: "settingsSectionPlaylists", title: "Settings › Playlist Order", section: "Settings Sections", defaultCombos: ["ctrl+p"], safeForExternalURL: true),
         ShortcutAction(id: "settingsSectionShortcuts", title: "Settings › Shortcuts", section: "Settings Sections", defaultCombos: ["ctrl+h"], safeForExternalURL: true),
         ShortcutAction(id: "settingsSectionURLs", title: "Settings › URL Commands", section: "Settings Sections", defaultCombos: ["ctrl+u"], safeForExternalURL: true),
     ]

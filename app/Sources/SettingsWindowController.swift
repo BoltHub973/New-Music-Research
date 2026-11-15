@@ -59,6 +59,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
         wv.translatesAutoresizingMaskIntoConstraints = false
         wv.navigationDelegate = self
         wv.configuration.userContentController.add(self, name: "nmrSettings")
+        wv.configuration.userContentController.addUserScript(WKUserScript(
+            source: ThemeManager.shared.activeInjectionScript(),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
         content.addSubview(wv)
 
         let dragBar = SettingsDragHandleView()
@@ -91,6 +96,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
             self,
             selector: #selector(handleStoreChanged),
             name: HistoryStore.changedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleStoreChanged),
+            name: ThemeManager.themesChangedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleStoreChanged),
+            name: PlaylistOrderStore.changedNotification,
             object: nil
         )
     }
@@ -169,10 +186,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
     }
 
     func applyAppearance() {
-        let app = SharedStore.shared.appearance
-        window?.appearance = NSAppearance(named: app == .light ? .aqua : .darkAqua)
+        let mode = ThemeManager.shared.currentSide
+        window?.appearance = NSAppearance(named: mode == .light ? .aqua : .darkAqua)
+        window?.backgroundColor = ThemeManager.shared.activePalette().bgColor
         if isPageReady {
-            webView.evaluateJavaScript("window.NMRSettings && window.NMRSettings.setTheme('\(app.rawValue)');", completionHandler: nil)
+            webView.evaluateJavaScript("window.NMRSettings && window.NMRSettings.setTheme('\(mode.rawValue)');", completionHandler: nil)
+            ThemeManager.shared.applyLiveTheme(to: webView)
         }
     }
 
@@ -182,9 +201,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
 
     func hydrate(section: String? = nil) {
         guard isPageReady else { return }
-        let runs = HistoryStore.shared.loadRuns(projectDir: projectDirProvider())
+        let dir = projectDirProvider()
+        let runs = HistoryStore.shared.loadRuns(projectDir: dir)
         var payload: [String: Any] = [
-            "appearance": SharedStore.shared.appearance.rawValue,
+            "appearance": ThemeManager.shared.activeModeString(),
             "pageZoom": SharedStore.shared.pageZoom,
             "showWorktreeMenu": worktreeShownProvider(),
             "sectionOrder": SharedStore.shared.settingsSectionOrder,
@@ -192,6 +212,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
             "runCount": runs.count,
             "shortcuts": ShortcutRegistry.shared.exportPayload(),
             "urlRoutes": URLRoutes.exportPayload(),
+            "themes": ThemeManager.shared.exportSettingsPayload(),
+            "playlistOrder": PlaylistOrderStore.shared.exportPayload(projectDir: dir),
         ]
         if let sec = section ?? pendingSection {
             payload["section"] = sec
@@ -297,8 +319,59 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, WKNa
                 SharedStore.shared.setSettingsSectionOrder(order)
             }
         case "setAppearance":
-            if let mode = body["mode"] as? String, let app = AppAppearance(rawValue: mode) {
-                SharedStore.shared.setAppearance(app)
+            if let mode = body["mode"] as? String {
+                let target: AppearanceMode = mode == "light" ? .light : .dark
+                ThemeManager.shared.switchAppearance(to: target)
+            }
+        case "selectTheme":
+            if let id = body["id"] as? String {
+                ThemeManager.shared.selectTheme(id: id)
+            }
+        case "setThemeNameDisplay":
+            if let modeStr = body["mode"] as? String,
+               let mode = ThemeNameDisplay(rawValue: modeStr) {
+                ThemeManager.shared.setThemeNameDisplay(mode)
+            }
+        case "chooseThemesFolder":
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Use Themes Folder"
+            panel.message = "Choose a Themes folder (containing 'New Music Research/' or .css files)."
+            panel.directoryURL = ThemeManager.shared.effectiveThemesRoot
+            if panel.runModal() == .OK, let url = panel.url {
+                ThemeManager.shared.setThemesFolder(url)
+            }
+        case "revealThemesFolder":
+            let folder = ThemeManager.shared.appThemesFolder
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(folder)
+        case "resetThemesFolder":
+            ThemeManager.shared.resetThemesFolder()
+        case "selectPreset":
+            if let id = body["id"] as? String {
+                PlaylistOrderStore.shared.selectPreset(id: id, projectDir: projectDirProvider())
+            }
+        case "createPreset":
+            if let name = body["name"] as? String, let urls = body["urls"] as? [String] {
+                _ = PlaylistOrderStore.shared.createPreset(name: name, urlsOrdered: urls, projectDir: projectDirProvider())
+            }
+        case "updatePresetOrder":
+            if let id = body["id"] as? String, let urls = body["urls"] as? [String] {
+                PlaylistOrderStore.shared.updatePresetOrder(id: id, urlsOrdered: urls, projectDir: projectDirProvider())
+            }
+        case "renamePreset":
+            if let id = body["id"] as? String, let name = body["name"] as? String {
+                PlaylistOrderStore.shared.renamePreset(id: id, name: name, projectDir: projectDirProvider())
+            }
+        case "deletePreset":
+            if let id = body["id"] as? String {
+                PlaylistOrderStore.shared.deletePreset(id: id, projectDir: projectDirProvider())
+            }
+        case "openExternalURL":
+            if let urlStr = body["url"] as? String, let url = URL(string: urlStr) {
+                NSWorkspace.shared.open(url)
             }
         case "setWorktreeMenu":
             if let show = body["show"] as? Bool {

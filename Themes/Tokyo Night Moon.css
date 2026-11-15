@@ -1,0 +1,66 @@
+/* naga-theme: tokyonight-moon */
+/* New Music Research theme: Tokyo Night Moon
+   naga-mode: dark
+   naga-accent: #82aaff
+   Imported 11-14-26 from Notion NAGA/Tokyo Night Moon.css. */
+
+:root {
+  --void: #191b29;
+  --abyss: #222436;
+  --bg: #222436;
+  --surface: #1e2030;
+  --elevated: #2f334d;
+  --surface-2: #2f334d;
+  --raised: #3b4261;
+  --surface-3: #3b4261;
+  --track: #444a73;
+  --border: rgba(200, 211, 245, 0.12);
+  --border-soft: rgba(200, 211, 245, 0.07);
+  --border-strong: rgba(200, 211, 245, 0.2);
+  --text: #c8d3f5;
+  --text-2: #828bb8;
+  --muted: #848aad;
+  --ghost: #828ab8;
+  --cyan: #82aaff;
+  --accent: #82aaff;
+  --accent-fg: #191b29;
+  --cyan-glow: rgba(130, 170, 255, 0.16);
+  --accent-dim: rgba(130, 170, 255, 0.16);
+  --accent-border: rgba(130, 170, 255, 0.44);
+  --violet: #c099ff;
+  --violet-glow: rgba(192, 153, 255, 0.16);
+  --magenta: #c099ff;
+  --ok: #c3e88d;
+  --green: #c3e88d;
+  --green-dim: rgba(195, 232, 141, 0.14);
+  --warn: #ffc777;
+  --amber: #ffc777;
+  --amber-dim: rgba(255, 199, 119, 0.15);
+  --err: #ff757f;
+  --danger: #ff757f;
+  --danger-dim: rgba(255, 117, 127, 0.15);
+  --panel-bg: rgba(30, 32, 48, 0.74);
+  --phase-bg: rgba(47, 51, 77, 0.76);
+  --scrim-bg: radial-gradient(ellipse at 50% 42%, rgba(34, 36, 54, 0.34) 0%, rgba(34, 36, 54, 0.68) 74%), linear-gradient(180deg, rgba(34, 36, 54, 0.5) 0%, rgba(34, 36, 54, 0.64) 50%, rgba(34, 36, 54, 0.88) 100%);
+  --mesh-bg: radial-gradient(ellipse at 18% 12%, rgba(130, 170, 255, 0.16) 0%, transparent 55%), radial-gradient(ellipse at 85% 20%, rgba(192, 153, 255, 0.16) 0%, transparent 55%), radial-gradient(ellipse at 60% 100%, rgba(192, 153, 255, 0.08) 0%, transparent 55%), var(--abyss);
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+html .bg.mesh {
+  background: var(--mesh-bg) !important;
+}
+html .bg.grid {
+  background-image:
+    linear-gradient(rgba(200, 211, 245, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 211, 245, 0.07) 1px, transparent 1px) !important;
+}
+html .wtile img {
+  filter: saturate(.85) brightness(.6);
+  opacity: 1;
+}
+html button.primary,
+html .btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}

@@ -70,21 +70,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var runAgainMenuItem: NSMenuItem?
     private var toggleLogMenuItem: NSMenuItem?
     private var toggleAppearanceMenuItem: NSMenuItem?
+    private var themesMenu: NSMenu?
     private var zoomStatusMenuItem: NSMenuItem?
     private var zoomInMenuItem: NSMenuItem?
     private var zoomOutMenuItem: NSMenuItem?
     private var zoomResetMenuItem: NSMenuItem?
     private var scrapeThisWeekMenuItem: NSMenuItem?
     private var scrapeLastWeekMenuItem: NSMenuItem?
+    private var scrapePlaylistOrderMenuItem: NSMenuItem?
 
     private var isLaunchComplete = false
     private var pendingURLs: [URL] = []
     private var lastProgressPayload: String?
 
     private var currentBackgroundColor: NSColor {
-        SharedStore.shared.appearance == .light
-            ? NSColor(srgbRed: 243.0/255, green: 245.0/255, blue: 249.0/255, alpha: 1)
-            : NSColor(srgbRed: 5.0/255, green: 5.0/255, blue: 8.0/255, alpha: 1)
+        ThemeManager.shared.activePalette().bgColor
     }
 
     private var activeEntry: MainWindowEntry? {
@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        _ = ThemeManager.shared
 
         setupWorktreeMenu()
         buildMenu()
@@ -134,6 +135,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(handleSharedStoreChanged),
             name: SharedStore.changedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleThemesChanged),
+            name: ThemeManager.themesChangedNotification,
             object: nil
         )
 
@@ -297,6 +304,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsController.selectSection("general")
         case "settingsSectionAppearance":
             settingsController.selectSection("appearance")
+        case "settingsSectionPlaylists":
+            settingsController.selectSection("playlists")
         case "settingsSectionShortcuts":
             settingsController.selectSection("shortcuts")
         case "settingsSectionURLs":
@@ -316,12 +325,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.start(mode: mode)
     }
 
-    @objc private func runAgain()       { run(mode: pipeline.lastMode) }
-    @objc private func scrapeThisWeek() { run(mode: .thisWeek) }
-    @objc private func scrapeLastWeek() { run(mode: .lastWeek) }
-    @objc private func openSettings()   { settingsController.show(anchor: activeEntry?.window, section: nil, background: false) }
-    @objc private func toggleSettings() { settingsController.toggle(anchor: activeEntry?.window) }
-    @objc private func toggleAppearanceAction() { SharedStore.shared.toggleAppearance() }
+    @objc private func runAgain()               { run(mode: pipeline.lastMode) }
+    @objc private func scrapeThisWeek()         { run(mode: .thisWeek) }
+    @objc private func scrapeLastWeek()         { run(mode: .lastWeek) }
+    @objc private func openSettings()           { settingsController.show(anchor: activeEntry?.window, section: nil, background: false) }
+    @objc private func toggleSettings()         { settingsController.toggle(anchor: activeEntry?.window) }
+    @objc private func toggleAppearanceAction() { ThemeManager.shared.toggleAppearance() }
+    @objc private func manageThemesAction()     { settingsController.show(anchor: activeEntry?.window, section: "appearance", background: false) }
+    @objc private func openPlaylistOrderAction(){ settingsController.show(anchor: activeEntry?.window, section: "playlists", background: false) }
+
+    @objc private func selectThemeFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        ThemeManager.shared.selectTheme(id: id)
+    }
+
+    @objc private func openThemesFolderFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(url)
+    }
 
     @objc private func toggleLogAction() {
         let entry = activeEntry ?? createMainWindow(background: false)
@@ -488,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyAppearanceToHelpWindow() {
         guard let win = helpWindow else { return }
-        let isLight = SharedStore.shared.appearance == .light
+        let isLight = ThemeManager.shared.currentSide == .light
         win.appearance = NSAppearance(named: isLight ? .aqua : .darkAqua)
         win.backgroundColor = currentBackgroundColor
         helpWebView?.loadHTMLString(firingRulesHTML(light: isLight), baseURL: nil)
@@ -500,11 +522,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let prevName = pipeline.previousResultsMacroName
         let prevUUID = pipeline.previousResultsMacroUUID
         let noneNote = "⌨ No Keyboard Maestro macros were fired — no playlist was created"
-        let bg = light ? "#f3f5f9" : "#050508"
-        let fg = light ? "#0f172a" : "#e8e8f0"
-        let muted = light ? "#475569" : "#8888a0"
-        let accent = light ? "#0284c7" : "#00f0ff"
-        let violet = light ? "#7c3aed" : "#c084fc"
+        let palette = ThemeManager.shared.activePalette()
+        let bg = palette.bgHex
+        let fg = palette.textHex
+        let muted = palette.mutedHex
+        let accent = palette.accentHex
+        let violet = palette.accentHex
         let line = light ? "rgba(15,23,42,.12)" : "rgba(255,255,255,.12)"
         return #"""
         <!doctype html><html><head><meta charset="utf-8"><style>
@@ -576,7 +599,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let display = (info["NewMusicResearchVersionDisplay"] as? String)
             ?? (info["CFBundleVersion"] as? String ?? "")
 
-        let isLight = SharedStore.shared.appearance == .light
+        let isLight = ThemeManager.shared.currentSide == .light
+        let palette = ThemeManager.shared.activePalette()
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
             styleMask: [.titled, .closable],
@@ -586,7 +610,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         win.title = "About New Music Research"
         win.titlebarAppearsTransparent = true
         win.appearance = NSAppearance(named: isLight ? .aqua : .darkAqua)
-        win.backgroundColor = currentBackgroundColor
+        win.backgroundColor = palette.bgColor
         win.isReleasedWhenClosed = false
 
         let icon = NSImageView(image: NSApp.applicationIconImage)
@@ -595,16 +619,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         icon.heightAnchor.constraint(equalToConstant: 168).isActive = true
         icon.widthAnchor.constraint(equalToConstant: 168).isActive = true
 
-        let titleColor = isLight
-            ? NSColor(srgbRed: 2.0/255, green: 132.0/255, blue: 199.0/255, alpha: 1)
-            : NSColor(srgbRed: 0, green: 240.0/255, blue: 1, alpha: 1)
-        let primaryText = isLight ? NSColor.labelColor : NSColor.white
+        let titleColor = palette.accentColor
+        let primaryText = palette.textColor
 
         let name = label("New Music Research", size: 30, weight: .bold, color: titleColor)
         let version = label("Version \(semver)", size: 15, weight: .semibold, color: primaryText)
         let build = buildLine(display, commitURL: info["NewMusicResearchVersionCommitURL"] as? String, accent: titleColor)
-        let tag = label("Tidal → Spotify pipeline", size: 12.5, weight: .regular,
-                        color: NSColor(srgbRed: 192.0/255, green: 132.0/255, blue: 252.0/255, alpha: 1))
+        let tag = label("Tidal → Spotify pipeline", size: 12.5, weight: .regular, color: palette.mutedColor)
 
         let stack = NSStackView(views: [icon, name, tag, version, build])
         stack.orientation = .vertical
@@ -726,9 +747,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menubar.addItem(viewItem)
         let viewMenu = NSMenu(title: "View")
         toggleLogMenuItem = addItem(viewMenu, "Toggle Scrape & Missed Log", #selector(toggleLogAction), key: "l")
-        let appToggle = addItem(viewMenu, "Switch to Light Appearance", #selector(toggleAppearanceAction), key: "l")
-        appToggle.keyEquivalentModifierMask = [.command, .shift]
-        toggleAppearanceMenuItem = appToggle
         viewMenu.addItem(.separator())
 
         let zStatus = NSMenuItem(title: "Zoom: 100%", action: nil, keyEquivalent: "")
@@ -749,12 +767,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inspect.keyEquivalentModifierMask = [.command, .option]
         viewItem.submenu = viewMenu
 
+        // Themes menu (built via shared ThemesMenu.build master)
+        let themesItem = NSMenuItem()
+        menubar.addItem(themesItem)
+        let themesSubmenu = NSMenu(title: "Themes")
+        themesItem.submenu = themesSubmenu
+        themesMenu = themesSubmenu
+        rebuildThemesMenu()
+
         // Scrape menu
         let scrapeItem = NSMenuItem()
         menubar.addItem(scrapeItem)
         let scrapeMenu = NSMenu(title: "Scrape")
         scrapeThisWeekMenuItem = addItem(scrapeMenu, "This Week", #selector(scrapeThisWeek), key: "1")
         scrapeLastWeekMenuItem = addItem(scrapeMenu, "Last Week", #selector(scrapeLastWeek), key: "2")
+        scrapeMenu.addItem(.separator())
+        scrapePlaylistOrderMenuItem = addItem(scrapeMenu, "Playlist Order…", #selector(openPlaylistOrderAction))
         scrapeItem.submenu = scrapeMenu
 
         // Window menu
@@ -783,9 +811,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleSharedStoreChanged() {
+        applyThemesAndStoreChanges()
+    }
+
+    @objc private func handleThemesChanged() {
+        applyThemesAndStoreChanges()
+    }
+
+    private func applyThemesAndStoreChanges() {
+        rebuildThemesMenu()
         updateMenusFromRegistry()
+        let isLight = ThemeManager.shared.currentSide == .light
         for entry in mainWindows {
-            entry.window.appearance = NSAppearance(named: SharedStore.shared.appearance == .light ? .aqua : .darkAqua)
+            entry.window.appearance = NSAppearance(named: isLight ? .aqua : .darkAqua)
             entry.window.backgroundColor = currentBackgroundColor
             entry.webVC.applyAppearance()
             entry.webVC.applyStoredZoom()
@@ -794,12 +832,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         helpWebView?.pageZoom = CGFloat(SharedStore.shared.pageZoom)
     }
 
+    private func rebuildThemesMenu() {
+        guard let themesMenu else { return }
+        let eq = ShortcutRegistry.shared.menuEquivalent(for: "toggleAppearance")
+        let spec = ThemeManager.shared.themesMenuSpec(
+            target: self,
+            selectTheme: #selector(selectThemeFromMenu(_:)),
+            switchAppearance: #selector(toggleAppearanceAction),
+            openFolder: #selector(openThemesFolderFromMenu(_:)),
+            manageThemes: #selector(manageThemesAction),
+            switchKey: eq?.key ?? "l",
+            switchModifiers: eq?.modifiers ?? [.command, .shift]
+        )
+        toggleAppearanceMenuItem = ThemesMenu.build(themesMenu, spec)
+    }
+
     private func updateMenusFromRegistry() {
         let zoomPct = Int(round(SharedStore.shared.pageZoom * 100))
         zoomStatusMenuItem?.title = "Zoom: \(zoomPct)%"
-        toggleAppearanceMenuItem?.title = SharedStore.shared.appearance == .light
-            ? "Switch to Dark Appearance"
-            : "Switch to Light Appearance"
+        let toLight = ThemeManager.shared.currentSide == .dark
+        toggleAppearanceMenuItem?.title = "Switch to \(toLight ? "Light" : "Dark") Appearance"
 
         let map: [(NSMenuItem?, String)] = [
             (settingsMenuItem, "openSettings"),
@@ -812,6 +864,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             (zoomResetMenuItem, "zoomReset"),
             (scrapeThisWeekMenuItem, "scrapeThisWeek"),
             (scrapeLastWeekMenuItem, "scrapeLastWeek"),
+            (scrapePlaylistOrderMenuItem, "settingsSectionPlaylists"),
         ]
         for (item, actionId) in map {
             guard let item = item else { continue }
@@ -878,11 +931,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "appearance":
             let mode = q["mode"] ?? "toggle"
             if mode == "dark" {
-                SharedStore.shared.setAppearance(.dark)
+                ThemeManager.shared.switchAppearance(to: .dark)
             } else if mode == "light" {
-                SharedStore.shared.setAppearance(.light)
+                ThemeManager.shared.switchAppearance(to: .light)
             } else {
-                SharedStore.shared.toggleAppearance()
+                ThemeManager.shared.toggleAppearance()
+            }
+
+        case "theme":
+            if let qName = q["name"], let theme = ThemeManager.shared.resolve(nameOrID: qName) {
+                ThemeManager.shared.selectTheme(id: theme.id)
+            }
+
+        case "preset":
+            if let qName = q["name"] {
+                _ = PlaylistOrderStore.shared.selectPreset(named: qName, projectDir: pipeline.projectDir)
             }
 
         case "worktree-menu":
@@ -984,8 +1047,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
             let runs = HistoryStore.shared.loadRuns(projectDir: self.pipeline.projectDir)
+            let playlistPayload = PlaylistOrderStore.shared.exportPayload(projectDir: self.pipeline.projectDir)
             let state: [String: Any] = [
-                "appearance": SharedStore.shared.appearance.rawValue,
+                "appearance": ThemeManager.shared.activeModeString(),
+                "themes": ThemeManager.shared.exportSettingsPayload(),
+                "themesMenuTitles": self.themesMenu.map { ThemesMenu.titles($0) } ?? [],
+                "activePreset": playlistPayload["activePresetId"] ?? "default",
                 "pageZoom": SharedStore.shared.pageZoom,
                 "showWorktreeMenu": self.worktreeController?.isShown ?? true,
                 "shortcuts": ShortcutRegistry.shared.exportPayload(),

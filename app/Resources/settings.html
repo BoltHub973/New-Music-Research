@@ -754,6 +754,229 @@ html, body {
   justify-content: flex-end;
   gap: 10px;
 }
+.modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.modal-input:focus {
+  border-color: var(--accent);
+}
+
+/* Themes & Appearance Swatches */
+.theme-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.swatch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.swatch-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+.swatch-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.swatch-preview {
+  height: 54px;
+  border-radius: 8px;
+  padding: 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+}
+.swatch-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.swatch-bar {
+  height: 5px;
+  border-radius: 99px;
+  flex: 1;
+}
+.swatch-lines {
+  display: flex;
+  gap: 5px;
+}
+.swatch-line {
+  height: 4px;
+  border-radius: 99px;
+  flex: 1;
+}
+.swatch-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.swatch-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.swatch-check {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.seg-group {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  gap: 3px;
+}
+.seg-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.seg-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.theme-error-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--danger-dim);
+  border: 1px solid rgba(255, 92, 114, 0.35);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Playlist Order & Presets */
+.preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.preset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.preset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preset-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.playlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  transition: border-color 0.12s ease, opacity 0.12s ease;
+}
+.playlist-row.dragging { opacity: 0.45; }
+.playlist-row.drag-over { border-color: var(--accent); }
+.playlist-grip {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 16px;
+  padding: 4px 2px;
+  user-select: none;
+}
+.playlist-rank {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.playlist-main {
+  flex: 1;
+  min-width: 0;
+}
+.playlist-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.playlist-url {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+  user-select: text;
+}
+.playlist-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .toast {
   position: fixed;
   right: 20px;
@@ -828,12 +1051,40 @@ html, body {
   </div>
 </div>
 
+<!-- NAGA Text Input Modal (for creating / renaming presets) -->
+<div class="modal-backdrop" id="nameModal" role="dialog" aria-modal="true">
+  <div class="naga-modal">
+    <div class="naga-modal-head">
+      <div class="naga-modal-tile" id="nameModalTile" style="background:var(--accent-dim);border-color:var(--accent-border)">🎛️</div>
+      <div>
+        <h2 class="naga-modal-title" id="nameModalTitle">New Preset</h2>
+        <p class="naga-modal-sub" id="nameModalSubtitle"></p>
+      </div>
+    </div>
+    <input
+      id="nameModalInput"
+      class="modal-input"
+      type="text"
+      placeholder="Preset name…"
+      autocorrect="off"
+      autocapitalize="off"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <div class="naga-modal-actions">
+      <button class="btn" id="nameCancelBtn">Cancel <span class="kbd-hint">Esc</span></button>
+      <button class="btn btn-primary" id="nameSaveBtn">Save <span class="kbd-hint">↩</span></button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const SECTION_META = {
   general: { id: "general", title: "General", badge: "⌃G", keywords: ["general", "history", "data", "folder", "finder", "clear", "zoom", "log", "storage"] },
-  appearance: { id: "appearance", title: "Appearance", badge: "⌃A", keywords: ["appearance", "dark", "light", "daybreak", "menu bar", "git", "worktree", "color"] },
+  appearance: { id: "appearance", title: "Appearance", badge: "⌃A", keywords: ["appearance", "theme", "dark", "light", "dracula", "yellow", "menu bar", "git", "worktree", "color", "swatch", "folder"] },
+  playlists: { id: "playlists", title: "Playlist Order", badge: "⌃P", keywords: ["playlist", "order", "preset", "tidal", "url", "sort", "sequence", "tracks", "page"] },
   shortcuts: { id: "shortcuts", title: "Shortcuts", badge: "⌃H", keywords: ["shortcut", "hotkey", "key", "binding", "combo", "keyboard", "record"] },
   urls: { id: "urls", title: "URL Commands", badge: "⌃U", keywords: ["url", "scheme", "nmr://", "deep link", "automation", "command", "route"] },
 };
@@ -842,7 +1093,7 @@ const RESERVED_COMBOS = new Set(["cmd+q", "cmd+w", "cmd+h", "cmd+m", "cmd+c", "c
 
 let STATE = {
   activeSection: "general",
-  sectionOrder: ["general", "appearance", "shortcuts", "urls"],
+  sectionOrder: ["general", "appearance", "playlists", "shortcuts", "urls"],
   appearance: "dark",
   pageZoom: 1.0,
   showWorktreeMenu: true,
@@ -850,6 +1101,24 @@ let STATE = {
   runCount: 0,
   shortcuts: [],
   urlRoutes: [],
+  themes: {
+    activeThemeId: "dracula",
+    activeThemeName: "Dracula",
+    currentSide: "dark",
+    nameDisplay: "custom",
+    folderPath: "~/Development/Themes/New Music Research",
+    rootPath: "~/Development/Themes",
+    isCustomFolder: false,
+    error: "",
+    listedThemes: [],
+    totalCount: 0,
+  },
+  playlistOrder: {
+    activePresetId: "default",
+    defaultPlaylists: [],
+    presets: [],
+    presetsPath: "",
+  },
   searchQuery: "",
   shortcutFilter: "",
   pressKeysFilter: false,
@@ -858,7 +1127,9 @@ let STATE = {
 };
 
 let confirmResolver = null;
+let nameModalResolver = null;
 let dragSectionId = null;
+let dragPlaylistUrl = null;
 
 function post(payload) {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nmrSettings) {
@@ -1049,18 +1320,55 @@ function renderGeneralSection() {
 }
 
 function renderAppearanceSection() {
-  const isDark = STATE.appearance !== "light";
+  const th = STATE.themes || {};
+  const isDark = (th.currentSide || STATE.appearance) !== "light";
+  const listed = Array.isArray(th.listedThemes) ? th.listedThemes : [];
+  const nameDisplay = th.nameDisplay || "custom";
+
+  const errorHTML = th.error
+    ? `<div class="theme-error-banner">⚠️ ${escapeHTML(th.error)}</div>`
+    : "";
+
+  const swatchCards = listed.length
+    ? listed.map(item => {
+        const p = item.palette || {};
+        const bg = escapeHTML(p.bg || "#1e1f29");
+        const surf = escapeHTML(p.surface || "#282a36");
+        const text = escapeHTML(p.text || "#f8f8f2");
+        const muted = escapeHTML(p.muted || "#a7b1d4");
+        const accent = escapeHTML(p.accent || "#bd93f9");
+        return `
+          <button class="swatch-card ${item.active ? "selected" : ""}" data-select-theme="${escapeHTML(item.id)}" title="${escapeHTML(item.name)}">
+            <div class="swatch-preview" style="background:${bg};border-color:${muted}33">
+              <div class="swatch-top">
+                <span class="swatch-dot" style="background:${accent}"></span>
+                <span class="swatch-bar" style="background:${text};opacity:0.88"></span>
+              </div>
+              <div class="swatch-lines">
+                <span class="swatch-line" style="background:${surf}"></span>
+                <span class="swatch-line" style="background:${muted};opacity:0.65"></span>
+              </div>
+            </div>
+            <div class="swatch-meta">
+              <span class="swatch-title">${escapeHTML(item.name)}</span>
+              ${item.active ? '<span class="swatch-check">✓</span>' : ""}
+            </div>
+          </button>
+        `;
+      }).join("")
+    : `<div class="empty-state">No themes found on this appearance side.</div>`;
+
   return `
     <div class="section-header">
       <div>
         <h1>Appearance</h1>
-        <p class="section-subtitle">Switch between Midnight Dark and Daybreak Light across every window.</p>
+        <p class="section-subtitle">Choose your Dark or Light theme across every New Music Research window.</p>
       </div>
     </div>
 
     <div class="card">
       <h2 class="card-title">Window Appearance</h2>
-      <p class="card-desc">Applies immediately to the live HUD, Scrape &amp; Missed Log, Settings, and Help windows.</p>
+      <p class="card-desc">Applies immediately across the main HUD, Scrape Log, Settings, Help, and About windows. Press <code>⇧⌘L</code> anytime to swap sides.</p>
       <div class="appearance-grid">
         <button class="theme-card ${isDark ? "selected" : ""}" data-pick-appearance="dark">
           <div class="theme-preview dark-prev">
@@ -1068,7 +1376,7 @@ function renderAppearanceSection() {
             <div class="prev-blocks"><div class="prev-block"></div><div class="prev-block"></div></div>
           </div>
           <div class="theme-meta">
-            <span>Midnight Dark</span>
+            <span>Dark Mode</span>
             ${isDark ? '<span class="badge">Active</span>' : ""}
           </div>
         </button>
@@ -1079,10 +1387,47 @@ function renderAppearanceSection() {
             <div class="prev-blocks"><div class="prev-block"></div><div class="prev-block"></div></div>
           </div>
           <div class="theme-meta">
-            <span>Daybreak Light</span>
+            <span>Light Mode</span>
             ${!isDark ? '<span class="badge">Active</span>' : ""}
           </div>
         </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between" style="margin-bottom:4px">
+        <div>
+          <h2 class="card-title">${isDark ? "Dark Themes" : "Light Themes"}</h2>
+          <p class="card-desc" style="margin-bottom:0">Showing ${listed.length} ${isDark ? "dark" : "light"} theme${listed.length === 1 ? "" : "s"}. Switch to ${isDark ? "Light" : "Dark"} Mode above to view the other side.</p>
+        </div>
+        <span class="badge">${escapeHTML(th.activeThemeName || "")}</span>
+      </div>
+      ${errorHTML}
+      <div class="theme-swatch-grid">${swatchCards}</div>
+    </div>
+
+    <div class="card">
+      <div class="row-between">
+        <div>
+          <h2 class="card-title">Theme Names</h2>
+          <p class="card-desc" style="margin-bottom:0">Show Adrian's custom theme names, official palette names, or both side-by-side.</p>
+        </div>
+        <div class="seg-group" role="group" aria-label="Theme Names Display">
+          <button class="seg-btn ${nameDisplay === "custom" ? "active" : ""}" data-name-display="custom">Custom</button>
+          <button class="seg-btn ${nameDisplay === "official" ? "active" : ""}" data-name-display="official">Original</button>
+          <button class="seg-btn ${nameDisplay === "both" ? "active" : ""}" data-name-display="both">Both</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Themes Folder</h2>
+      <p class="card-desc">Edits to any theme CSS file or <code>theme-names.json</code> reload live as soon as you save.</p>
+      <div class="path-box">${escapeHTML(th.folderPath || "~/Development/Themes/New Music Research")}</div>
+      <div class="btn-group">
+        <button class="btn" id="chooseThemesFolderBtn">Choose…</button>
+        <button class="btn" id="revealThemesFolderBtn">Reveal in Finder</button>
+        <button class="btn" id="resetThemesFolderBtn" ${th.isCustomFolder ? "" : "disabled"}>Reset Default</button>
       </div>
     </div>
 
@@ -1097,6 +1442,102 @@ function renderAppearanceSection() {
           <span class="slider"></span>
         </label>
       </div>
+    </div>
+  `;
+}
+
+function activePlaylistPresetData() {
+  const po = STATE.playlistOrder || {};
+  const defaults = Array.isArray(po.defaultPlaylists) ? po.defaultPlaylists : [];
+  const presets = Array.isArray(po.presets) ? po.presets : [];
+  const activeId = po.activePresetId || "default";
+  if (activeId === "default") {
+    return { isDefault: true, activeId: "default", preset: null, items: defaults, defaults, presets };
+  }
+  const preset = presets.find(p => p.id === activeId);
+  if (!preset) {
+    return { isDefault: true, activeId: "default", preset: null, items: defaults, defaults, presets };
+  }
+  return { isDefault: false, activeId, preset, items: preset.playlists || defaults, defaults, presets };
+}
+
+function nextCustomPresetName() {
+  const presets = (STATE.playlistOrder && STATE.playlistOrder.presets) || [];
+  let n = 1;
+  while (presets.some(p => (p.name || "").toLowerCase() === `custom order ${n}`)) {
+    n += 1;
+  }
+  return `Custom Order ${n}`;
+}
+
+function renderPlaylistsSection() {
+  const data = activePlaylistPresetData();
+  const { isDefault, activeId, preset, items, presets } = data;
+
+  const presetPills = [
+    `<button class="preset-pill ${activeId === "default" ? "active" : ""}" data-select-preset="default">Default</button>`,
+    ...presets.map(p =>
+      `<button class="preset-pill ${p.id === activeId ? "active" : ""}" data-select-preset="${escapeHTML(p.id)}">${escapeHTML(p.name)}</button>`
+    )
+  ].join("");
+
+  const presetActions = isDefault
+    ? `<button class="btn btn-sm" id="duplicateDefaultPresetBtn">+ Duplicate as Custom</button>`
+    : `
+      <button class="btn btn-sm" id="renamePresetBtn">Rename</button>
+      <button class="btn btn-sm" id="resetPresetOrderBtn">Reset to Default Order</button>
+      <button class="btn btn-sm btn-danger" id="deletePresetBtn">Delete</button>
+    `;
+
+  const rowsHTML = items.length
+    ? items.map((item, idx) => `
+        <div class="playlist-row" draggable="true" data-playlist-url="${escapeHTML(item.url)}">
+          <span class="playlist-grip" title="Drag to reorder">≡</span>
+          <span class="playlist-rank">${idx + 1}</span>
+          <div class="playlist-main">
+            <div class="playlist-name">${escapeHTML(item.name)}</div>
+            <div class="playlist-url">${escapeHTML(item.url)}</div>
+          </div>
+          <div class="playlist-actions">
+            <button class="btn btn-sm" data-move-playlist="up" data-playlist-index="${idx}" ${idx === 0 ? "disabled" : ""} title="Move Up">↑</button>
+            <button class="btn btn-sm" data-move-playlist="down" data-playlist-index="${idx}" ${idx === items.length - 1 ? "disabled" : ""} title="Move Down">↓</button>
+            <button class="btn btn-sm" data-copy-url="${escapeHTML(item.url)}" title="Copy URL">Copy</button>
+            <button class="btn btn-sm" data-open-url="${escapeHTML(item.url)}" title="Open in Browser">Open</button>
+          </div>
+        </div>
+      `).join("")
+    : `<div class="empty-state">No playlists found in <code>playlists.json</code>.</div>`;
+
+  return `
+    <div class="section-header">
+      <div>
+        <h1>Playlist Order</h1>
+        <p class="section-subtitle">Choose or customize the sequence playlists appear in during every scrape &amp; Spotify export. Drag rows or use ↑ / ↓.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between" style="margin-bottom:10px">
+        <div>
+          <h2 class="card-title">Presets</h2>
+          <p class="card-desc" style="margin-bottom:0">${isDefault
+            ? "Default preserves your original playlist order. Reordering while Default is active lets you save a new custom preset."
+            : `Editing custom preset <strong>${escapeHTML(preset.name)}</strong>. Every change saves automatically.`}</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="newPresetBtn">+ New Preset</button>
+      </div>
+      <div class="preset-bar">
+        <div class="preset-pills">${presetPills}</div>
+        <div class="btn-group">${presetActions}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row-between" style="margin-bottom:12px">
+        <h2 class="card-title" style="margin:0">Sequence (${items.length} playlists)</h2>
+        <span class="badge">${isDefault ? "Default (locked)" : escapeHTML(preset.name)}</span>
+      </div>
+      <div class="playlist-list" id="playlistOrderList">${rowsHTML}</div>
     </div>
   `;
 }
@@ -1230,8 +1671,11 @@ function renderCrossSectionSearch(q) {
   if (SECTION_META.general.keywords.some(k => k.includes(term) || term.includes(k)) || "clear log history reveal finder zoom".includes(term)) {
     blocks.push(`<div class="search-match-group"><div class="search-match-badge">General</div>${renderGeneralSection()}</div>`);
   }
-  if (SECTION_META.appearance.keywords.some(k => k.includes(term) || term.includes(k)) || "dark light daybreak git menu bar".includes(term)) {
+  if (SECTION_META.appearance.keywords.some(k => k.includes(term) || term.includes(k)) || "dark light dracula yellow swatch theme git menu bar".includes(term)) {
     blocks.push(`<div class="search-match-group"><div class="search-match-badge">Appearance</div>${renderAppearanceSection()}</div>`);
+  }
+  if (SECTION_META.playlists.keywords.some(k => k.includes(term) || term.includes(k)) || "playlist order preset tidal url".includes(term) || ((STATE.playlistOrder?.defaultPlaylists || []).some(p => (p.name + " " + p.url).toLowerCase().includes(term)))) {
+    blocks.push(`<div class="search-match-group"><div class="search-match-badge">Playlist Order</div>${renderPlaylistsSection()}</div>`);
   }
 
   const matchedShortcuts = STATE.shortcuts.filter(act =>
@@ -1296,6 +1740,7 @@ function renderContent() {
   } else {
     switch (STATE.activeSection) {
       case "appearance": root.innerHTML = renderAppearanceSection(); break;
+      case "playlists": root.innerHTML = renderPlaylistsSection(); break;
       case "shortcuts": root.innerHTML = renderShortcutsSection(); break;
       case "urls": root.innerHTML = renderURLsSection(); break;
       default: root.innerHTML = renderGeneralSection(); break;
@@ -1352,6 +1797,195 @@ function wireDynamicHandlers() {
       setTheme(mode);
       post({ type: "setAppearance", mode });
       renderContent();
+    });
+  });
+
+  document.querySelectorAll("[data-select-theme]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      post({ type: "selectTheme", id: btn.dataset.selectTheme });
+    });
+  });
+
+  document.querySelectorAll("[data-name-display]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      post({ type: "setThemeNameDisplay", mode: btn.dataset.nameDisplay });
+    });
+  });
+
+  const chooseThemesBtn = document.getElementById("chooseThemesFolderBtn");
+  if (chooseThemesBtn) chooseThemesBtn.addEventListener("click", () => post({ type: "chooseThemesFolder" }));
+  const revealThemesBtn = document.getElementById("revealThemesFolderBtn");
+  if (revealThemesBtn) revealThemesBtn.addEventListener("click", () => post({ type: "revealThemesFolder" }));
+  const resetThemesBtn = document.getElementById("resetThemesFolderBtn");
+  if (resetThemesBtn) resetThemesBtn.addEventListener("click", () => post({ type: "resetThemesFolder" }));
+
+  // Playlist Order & Presets
+  document.querySelectorAll("[data-select-preset]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      post({ type: "selectPreset", id: btn.dataset.selectPreset });
+    });
+  });
+
+  const newPresetBtn = document.getElementById("newPresetBtn");
+  if (newPresetBtn) {
+    newPresetBtn.addEventListener("click", async () => {
+      const data = activePlaylistPresetData();
+      const name = await askNameModal({
+        title: "New Custom Preset",
+        subtitle: "Starts from the current playlist sequence.",
+        initialValue: nextCustomPresetName(),
+        saveLabel: "Create Preset"
+      });
+      if (name) {
+        post({ type: "createPreset", name, urls: data.items.map(p => p.url) });
+        showToast("Created preset " + name);
+      }
+    });
+  }
+
+  const dupBtn = document.getElementById("duplicateDefaultPresetBtn");
+  if (dupBtn) {
+    dupBtn.addEventListener("click", async () => {
+      const data = activePlaylistPresetData();
+      const name = await askNameModal({
+        title: "Duplicate Default Order",
+        subtitle: "Create an editable custom preset with the Default order.",
+        initialValue: nextCustomPresetName(),
+        saveLabel: "Create Preset"
+      });
+      if (name) {
+        post({ type: "createPreset", name, urls: data.items.map(p => p.url) });
+        showToast("Created preset " + name);
+      }
+    });
+  }
+
+  const renamePresetBtn = document.getElementById("renamePresetBtn");
+  if (renamePresetBtn) {
+    renamePresetBtn.addEventListener("click", async () => {
+      const data = activePlaylistPresetData();
+      if (data.isDefault || !data.preset) return;
+      const name = await askNameModal({
+        title: "Rename Preset",
+        subtitle: `Current name: ${data.preset.name}`,
+        initialValue: data.preset.name,
+        saveLabel: "Rename"
+      });
+      if (name) {
+        post({ type: "renamePreset", id: data.preset.id, name });
+        showToast("Renamed preset to " + name);
+      }
+    });
+  }
+
+  const resetPresetBtn = document.getElementById("resetPresetOrderBtn");
+  if (resetPresetBtn) {
+    resetPresetBtn.addEventListener("click", async () => {
+      const data = activePlaylistPresetData();
+      if (data.isDefault || !data.preset) return;
+      const ok = await askConfirm({
+        title: "Reset Preset to Default Order?",
+        subtitle: `Reverts "${data.preset.name}" back to the original playlist order.`,
+        tile: "↺",
+        facts: [
+          ["Preset", data.preset.name],
+          ["Playlists", `${data.defaults.length} playlists`]
+        ]
+      });
+      if (ok) {
+        post({ type: "updatePresetOrder", id: data.preset.id, urls: data.defaults.map(p => p.url) });
+        showToast("Reset " + data.preset.name + " to Default order");
+      }
+    });
+  }
+
+  const deletePresetBtn = document.getElementById("deletePresetBtn");
+  if (deletePresetBtn) {
+    deletePresetBtn.addEventListener("click", async () => {
+      const data = activePlaylistPresetData();
+      if (data.isDefault || !data.preset) return;
+      const ok = await askConfirm({
+        title: `Delete Preset "${data.preset.name}"?`,
+        subtitle: "Your Default preset will remain untouched and become active.",
+        tile: "🗑️",
+        facts: [["Preset", data.preset.name]]
+      });
+      if (ok) {
+        post({ type: "deletePreset", id: data.preset.id });
+        showToast("Deleted preset " + data.preset.name);
+      }
+    });
+  }
+
+  async function applyNewPlaylistSequence(urlsOrdered) {
+    const data = activePlaylistPresetData();
+    if (data.isDefault) {
+      const name = await askNameModal({
+        title: "Save Reorder as New Custom Preset",
+        subtitle: "Default stays locked so you always have the original order.",
+        initialValue: nextCustomPresetName(),
+        saveLabel: "Save Preset"
+      });
+      if (name) {
+        post({ type: "createPreset", name, urls: urlsOrdered });
+        showToast("Saved custom preset " + name);
+      }
+    } else if (data.preset) {
+      post({ type: "updatePresetOrder", id: data.preset.id, urls: urlsOrdered });
+    }
+  }
+
+  document.querySelectorAll("[data-move-playlist]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const dir = btn.dataset.movePlaylist;
+      const idx = Number(btn.dataset.playlistIndex);
+      const data = activePlaylistPresetData();
+      const urls = data.items.map(p => p.url);
+      const targetIdx = dir === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= urls.length) return;
+      const [moved] = urls.splice(idx, 1);
+      urls.splice(targetIdx, 0, moved);
+      await applyNewPlaylistSequence(urls);
+    });
+  });
+
+  document.querySelectorAll(".playlist-row").forEach(row => {
+    const rowUrl = row.dataset.playlistUrl;
+    row.addEventListener("dragstart", (e) => {
+      dragPlaylistUrl = rowUrl;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", rowUrl);
+    });
+    row.addEventListener("dragend", () => {
+      dragPlaylistUrl = null;
+      document.querySelectorAll(".playlist-row").forEach(r => r.classList.remove("dragging", "drag-over"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (dragPlaylistUrl && dragPlaylistUrl !== rowUrl) {
+        row.classList.add("drag-over");
+      }
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      if (!dragPlaylistUrl || dragPlaylistUrl === rowUrl) return;
+      const data = activePlaylistPresetData();
+      const urls = data.items.map(p => p.url);
+      const fromIdx = urls.indexOf(dragPlaylistUrl);
+      const toIdx = urls.indexOf(rowUrl);
+      if (fromIdx < 0 || toIdx < 0) return;
+      urls.splice(fromIdx, 1);
+      urls.splice(toIdx, 0, dragPlaylistUrl);
+      await applyNewPlaylistSequence(urls);
+    });
+  });
+
+  document.querySelectorAll("[data-open-url]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      post({ type: "openExternalURL", url: btn.dataset.openUrl });
     });
   });
 
@@ -1493,6 +2127,32 @@ function resolveConfirm(answer) {
 document.getElementById("confirmYesBtn").addEventListener("click", () => resolveConfirm(true));
 document.getElementById("confirmNoBtn").addEventListener("click", () => resolveConfirm(false));
 
+function askNameModal({ title, subtitle = "", initialValue = "", saveLabel = "Save" }) {
+  return new Promise(resolve => {
+    nameModalResolver = resolve;
+    document.getElementById("nameModalTitle").textContent = title;
+    document.getElementById("nameModalSubtitle").textContent = subtitle;
+    document.getElementById("nameSaveBtn").innerHTML = `${escapeHTML(saveLabel)} <span class="kbd-hint">↩</span>`;
+    const inp = document.getElementById("nameModalInput");
+    inp.value = initialValue;
+    document.getElementById("nameModal").classList.add("open");
+    setTimeout(() => { inp.focus(); inp.select(); }, 20);
+  });
+}
+
+function resolveNameModal(confirmed) {
+  const modal = document.getElementById("nameModal");
+  if (!modal.classList.contains("open")) return;
+  const val = confirmed ? document.getElementById("nameModalInput").value.trim() : null;
+  modal.classList.remove("open");
+  const r = nameModalResolver;
+  nameModalResolver = null;
+  if (r) r(val && val.length ? val : null);
+}
+
+document.getElementById("nameSaveBtn").addEventListener("click", () => resolveNameModal(true));
+document.getElementById("nameCancelBtn").addEventListener("click", () => resolveNameModal(false));
+
 document.getElementById("moreBtn").addEventListener("click", () => {
   const scroller = document.getElementById("contentScroll");
   scroller.scrollBy({ top: Math.round(scroller.clientHeight * 0.72), behavior: "smooth" });
@@ -1527,6 +2187,18 @@ window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     if (k === "y" || e.key === "Enter") resolveConfirm(true);
     else if (k === "n" || e.key === "Escape") resolveConfirm(false);
+    return;
+  }
+
+  // Name input modal keys
+  if (document.getElementById("nameModal").classList.contains("open")) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      resolveNameModal(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      resolveNameModal(false);
+    }
     return;
   }
 
@@ -1613,10 +2285,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Ctrl+G / Ctrl+A / Ctrl+H / Ctrl+U section jumps
+  // Ctrl+G / Ctrl+A / Ctrl+P / Ctrl+H / Ctrl+U section jumps
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const k = e.key.toLowerCase();
-    const map = { g: "general", a: "appearance", h: "shortcuts", u: "urls" };
+    const map = { g: "general", a: "appearance", p: "playlists", h: "shortcuts", u: "urls" };
     if (map[k]) {
       e.preventDefault();
       STATE.searchQuery = "";
@@ -1640,6 +2312,8 @@ window.NMRSettings = {
     if (typeof payload.runCount === "number") STATE.runCount = payload.runCount;
     if (Array.isArray(payload.shortcuts)) STATE.shortcuts = payload.shortcuts;
     if (Array.isArray(payload.urlRoutes)) STATE.urlRoutes = payload.urlRoutes;
+    if (payload.themes && typeof payload.themes === "object") STATE.themes = payload.themes;
+    if (payload.playlistOrder && typeof payload.playlistOrder === "object") STATE.playlistOrder = payload.playlistOrder;
     if (payload.section && SECTION_META[payload.section]) {
       STATE.activeSection = payload.section;
       STATE.searchQuery = "";
@@ -1674,6 +2348,10 @@ window.NMRSettings = {
     return {
       activeSection: STATE.activeSection,
       appearance: STATE.appearance,
+      activeThemeId: STATE.themes ? STATE.themes.activeThemeId : "",
+      activeThemeName: STATE.themes ? STATE.themes.activeThemeName : "",
+      activePresetId: STATE.playlistOrder ? STATE.playlistOrder.activePresetId : "default",
+      presetCount: STATE.playlistOrder && Array.isArray(STATE.playlistOrder.presets) ? STATE.playlistOrder.presets.length : 0,
       pageZoom: STATE.pageZoom,
       showWorktreeMenu: STATE.showWorktreeMenu,
       searchQuery: STATE.searchQuery,
