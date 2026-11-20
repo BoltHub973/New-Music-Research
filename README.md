@@ -13,7 +13,7 @@ python3 track_playlists.py --mode last-week   # previous calendar week (Mon → 
 
 That's it. The script handles everything automatically from start to finish.
 `--mode last-week` publishes an orange-themed `🟠 DX LAST WEEK <date>` playlist instead
-of the usual purple `🪁 DX <date>`. In the app these live under the **Scrape** menu
+of the usual purple `🪁 Scout <date>`. In the app these live under the **Scrape** menu
 (⌘1 This Week / ⌘2 Last Week).
 
 Prefer a window over a terminal? Build the standalone **[New Music Research](app/)**
@@ -40,7 +40,7 @@ window (`./demo.sh`, `./demo.sh fail`, `./demo.sh empty`).
 3. **Logged in-app (no CSVs)** — each run's scraped and missed tracks are stored directly inside `~/Library/Application Support/New Music Research/history.json` and browsed inside the app's **Scrape & Missed Log** (`⌘L`), without creating `scraped-files/` or `missed-tracks/` CSVs going forward.
 4. **A Spotify playlist is created** — a new private playlist is added to your Spotify account named:
    ```
-   🪁 DX 02-20-26
+   🪁 Scout 02-20-26
    ```
    A **custom 500×500 cover** is generated on the fly and uploaded — a dark, futuristic "pirate radio broadcast" slate with the playlist's creation date stamped vertically (`MAY` / `22` / `26`). This-week runs render it purple; `--mode last-week` renders the same slate on an orange background. The generated JPEG is also saved to `generated-artwork/` as a historical record.
 4. **All found tracks are added** to that playlist automatically using a 3-step search strategy:

@@ -51,7 +51,7 @@ MAX_NETWORK_RETRIES = 4
 
 # How each scrape mode brands its playlist: title prefix + artwork theme.
 MODES = {
-    "this-week": {"title": "🪁 DX {date}", "theme": "violet"},
+    "this-week": {"title": "🪁 Scout {date}", "theme": "violet"},
     "last-week": {"title": "🟠 DX LAST WEEK {date}", "theme": "orange"},
 }
 
@@ -112,7 +112,7 @@ def spotify_call(fn, *args, **kwargs):
                 retry_after = int(e.headers.get("Retry-After", 30)) + 1
                 msg = f"Waiting {retry_after}s for rate limit to reset…"
                 ui.warn(f"Rate limited — {msg}")
-                mac_notify("🪁 DX — Spotify Rate Limit", msg)
+                mac_notify("🪁 Scout — Spotify Rate Limit", msg)
                 time.sleep(retry_after)
                 ui.info("Retrying…")
             elif e.http_status is not None and e.http_status >= 500 and attempts < MAX_NETWORK_RETRIES:
@@ -273,7 +273,7 @@ def main():
     parser.add_argument("--mode", choices=sorted(MODES), default="this-week",
                         help="Scrape window the snapshot represents — controls playlist title & artwork theme")
     parser.add_argument("--timestamped", action="store_true",
-                        help="Append local time to the playlist name (e.g. '🪁 DX 11-14-26 at 10:05pm')")
+                        help="Append local time to the playlist name (e.g. '🪁 Scout 11-14-26 at 10:05pm')")
     parser.add_argument("--preset-name", default="Default",
                         help="Name of the active Playlist Order preset used to generate these tracks")
     parser.add_argument("--expected-sources-json", default="",

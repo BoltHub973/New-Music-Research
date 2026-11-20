@@ -404,21 +404,37 @@ class PlaylistNameFormatTests(unittest.TestCase):
         dt_pm = datetime.datetime(2026, 11, 14, 22, 5)
         self.assertEqual(
             export_to_spotify.format_playlist_name("this-week", now=dt_pm, timestamped=False),
-            "🪁 DX 11-14-26",
+            "🪁 Scout 11-14-26",
         )
         self.assertEqual(
             export_to_spotify.format_playlist_name("this-week", now=dt_pm, timestamped=True),
-            "🪁 DX 11-14-26 at 10:05pm",
+            "🪁 Scout 11-14-26 at 10:05pm",
         )
         dt_am = datetime.datetime(2026, 11, 14, 9, 5)
         self.assertEqual(
             export_to_spotify.format_playlist_name("this-week", now=dt_am, timestamped=True),
-            "🪁 DX 11-14-26 at 9:05am",
+            "🪁 Scout 11-14-26 at 9:05am",
         )
         self.assertEqual(
             export_to_spotify.format_playlist_name("last-week", now=dt_pm, timestamped=True),
             "🟠 DX LAST WEEK 11-14-26 at 10:05pm",
         )
+
+    def test_swift_and_python_playlist_prefix_parity(self):
+        for rel in (
+            "export_to_spotify.py",
+            "launch_check.py",
+            "app/Sources/AppDelegate.swift",
+            "app/Sources/SharedStore.swift",
+            "keyboard-maestro/demo_run.js",
+        ):
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+            self.assertNotIn("🪁 DX", text, f"{rel} still references legacy '🪁 DX' prefix")
+
+        app_delegate = (REPO_ROOT / "app/Sources/AppDelegate.swift").read_text(encoding="utf-8")
+        self.assertIn('"🪁 Scout"', app_delegate)
+        shared_store = (REPO_ROOT / "app/Sources/SharedStore.swift").read_text(encoding="utf-8")
+        self.assertIn('"🪁 Scout ', shared_store)
 
 
 if __name__ == "__main__":

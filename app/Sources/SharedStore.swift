@@ -436,7 +436,7 @@ final class HistoryStore {
                 "mode": "this-week",
                 "ok": true,
                 "message": "Imported from legacy CSV log",
-                "playlistName": "🪁 DX \(dispFmt.string(from: sc.date))",
+                "playlistName": "🪁 Scout \(dispFmt.string(from: sc.date))",
                 "spotifyUri": "",
                 "stats": [
                     "unique": scMapped.count,
@@ -456,7 +456,7 @@ final class HistoryStore {
                 "mode": "this-week",
                 "ok": true,
                 "message": "Imported missed tracks log",
-                "playlistName": "🪁 DX \(dispFmt.string(from: ms.date))",
+                "playlistName": "🪁 Scout \(dispFmt.string(from: ms.date))",
                 "spotifyUri": "",
                 "stats": ["omitted": msMapped.count],
                 "scraped": [],

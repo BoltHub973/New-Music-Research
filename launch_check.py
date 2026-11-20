@@ -5,7 +5,7 @@ Launch-time helper for the New Music Research app.
     python3 launch_check.py delete <id>…    → DELETED:<id> / DELETE_ERROR:<id>:<why> per id
 
 `check` looks through the user's own playlists for any whose name is exactly
-today's This-Week playlist title (🪁 DX MM-DD-YY). The app uses the result to
+today's This-Week playlist title (🪁 Scout MM-DD-YY). The app uses the result to
 offer a re-scrape before kicking off the launch run.
 
 `delete` removes the given playlists from the library — Spotify's notion of

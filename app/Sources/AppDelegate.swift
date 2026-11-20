@@ -491,7 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dfDate = DateFormatter()
         dfDate.locale = Locale(identifier: "en_US_POSIX")
         dfDate.dateFormat = "MM-dd-yy"
-        let prefix = (mode == .lastWeek) ? "🟠 DX LAST WEEK" : "🪁 DX"
+        let prefix = (mode == .lastWeek) ? "🟠 DX LAST WEEK" : "🪁 Scout"
         let base = "\(prefix) \(dfDate.string(from: date))"
         guard timestamped else { return base }
         let dfTime = DateFormatter()

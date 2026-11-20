@@ -184,7 +184,7 @@
         state.current = {name:'', detail:'', status:'done', art:'', video:''};
       });
     } else {
-      [['Creating playlist', '🪁 DX 07-18-26', 92],
+      [['Creating playlist', '🪁 Scout 07-18-26', 92],
        ['Adding tracks to playlist', '26 tracks', 95],
        ['Rendering cover artwork', 'HTML/CSS → Playwright → JPEG', 97],
        ['Uploading cover art', 'Sending artwork to Spotify', 99]].forEach(function(step){
